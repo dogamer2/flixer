@@ -1,0 +1,51 @@
+.phone-mode body {
+  overscroll-behavior-y: contain;
+}
+
+.phone-mode a,
+.phone-mode button,
+.phone-mode input,
+.phone-mode textarea,
+.phone-mode select {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.phone-mode header {
+  backdrop-filter: blur(18px);
+}
+
+.phone-mode header button,
+.phone-mode header a {
+  min-width: 42px;
+  min-height: 42px;
+}
+
+.phone-mode nav.fixed.bottom-0 button {
+  min-height: 62px;
+  border-radius: 14px;
+}
+
+.phone-mode .mobile-safe-area {
+  padding-bottom: calc(94px + env(safe-area-inset-bottom)) !important;
+}
+
+.phone-mode [data-row-id] {
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.phone-mode [data-row-id] > div > * {
+  scroll-snap-align: start;
+}
+
+.phone-mode input,
+.phone-mode textarea {
+  font-size: 16px !important;
+}
+
+.phone-mode .fixed.inset-0 .max-w-4xl,
+.phone-mode .fixed.inset-0 .max-w-md,
+.phone-mode .fixed.inset-0 .max-w-lg {
+  margin-bottom: calc(88px + env(safe-area-inset-bottom));
+}

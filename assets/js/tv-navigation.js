@@ -157,13 +157,28 @@
     row.scrollTo({ left: desired, behavior: "smooth" });
   }
 
-  function centerCardInViewport(card) {
+  function centerElementVertically(el) {
+    if (!el) return;
+    var rect = el.getBoundingClientRect();
+    var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    var desiredTop = window.scrollY + rect.top - (viewportHeight - rect.height) / 2;
+    var maxScroll = Math.max(0, document.documentElement.scrollHeight - viewportHeight);
+    desiredTop = Math.max(0, Math.min(maxScroll, desiredTop));
+    window.scrollTo({ top: desiredTop, behavior: "smooth" });
+  }
+
+  function centerCardInViewport(card, options) {
     if (!card) return;
+
     var row = card.dataset.tvRowId ? getRowContainer(card.dataset.tvRowId) : null;
-    if (row) {
+    var verticalTarget = row || card;
+    var skipHorizontal = !!(options && options.skipHorizontal);
+
+    if (row && !skipHorizontal) {
       scrollRowToCard(row, card);
     }
-    card.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+
+    centerElementVertically(verticalTarget);
   }
 
   function revealMoreRow(rowId, direction, fallbackIndex) {
@@ -171,10 +186,10 @@
     if (!canScrollRow(row, direction)) return false;
 
     var amount = Math.max(220, Math.floor(row.clientWidth * 0.65));
-    row.scrollBy({
-      left: direction === "right" ? amount : -amount,
-      behavior: "smooth"
-    });
+    var maxScroll = Math.max(0, row.scrollWidth - row.clientWidth);
+    var desired = row.scrollLeft + (direction === "right" ? amount : -amount);
+    desired = Math.max(0, Math.min(maxScroll, desired));
+    row.scrollTo({ left: desired, behavior: "smooth" });
 
     window.setTimeout(function () {
       assignFocusables();
@@ -184,7 +199,7 @@
       var target = cards[safeIndex];
       if (target) {
         target.focus({ preventScroll: true });
-        centerCardInViewport(target);
+        centerCardInViewport(target, { skipHorizontal: true });
       }
     }, 260);
 
@@ -291,13 +306,6 @@
     var target = cards[nextIndex];
     target.focus({ preventScroll: true });
     centerCardInViewport(target);
-
-    var row = getRowContainer(rowId);
-    if (row) {
-      window.setTimeout(function () {
-        scrollRowToCard(row, target);
-      }, 40);
-    }
 
     return true;
   }
@@ -430,8 +438,22 @@
     applyFocusState(target);
 
     window.setTimeout(function () {
+      if (target.dataset.tvCard === "1") {
+        centerCardInViewport(target);
+        return;
+      }
+
+      if (isTextInput(target)) {
+        target.scrollIntoView({
+          block: "center",
+          inline: "nearest",
+          behavior: "smooth"
+        });
+        return;
+      }
+
       target.scrollIntoView({
-        block: isTextInput(target) ? "center" : "nearest",
+        block: "nearest",
         inline: "nearest",
         behavior: "smooth"
       });
