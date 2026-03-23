@@ -24,6 +24,9 @@
   if (!isTvMode()) return;
 
   document.documentElement.classList.add("tv-mode");
+  try {
+    sessionStorage.setItem("backupBannerDismissed", "true");
+  } catch (error) {}
 
   function isVisible(el) {
     if (!el || !el.isConnected) return false;
@@ -277,7 +280,39 @@
     return true;
   }
 
+  function visibleMoreInfoButton() {
+    var candidates = Array.from(document.querySelectorAll('button[aria-label="More Info"],button[aria-label="more info"],button[aria-label="More info"]'));
+    for (var i = 0; i < candidates.length; i += 1) {
+      if (isVisible(candidates[i])) return candidates[i];
+    }
+    return null;
+  }
+
+  function openFocusedCardDetails(target) {
+    if (!target || target.dataset.tvCard !== "1") return false;
+
+    target.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true, cancelable: true, view: window }));
+    target.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, cancelable: true, view: window }));
+
+    window.setTimeout(function () {
+      var button = visibleMoreInfoButton();
+      if (button) {
+        button.click();
+      } else if (typeof target.click === "function") {
+        target.click();
+      }
+    }, 560);
+
+    return true;
+  }
+
   function assignFocusables() {
+    Array.from(document.querySelectorAll('a[href*="backup-domains"], a[href*="feedback"], button[aria-label="Backup Domains"]')).forEach(function (el) {
+      el.style.display = "none";
+      el.setAttribute("aria-hidden", "true");
+      el.tabIndex = -1;
+    });
+
     Array.from(document.querySelectorAll("header a, header button, nav a, nav button, input, textarea, select, [role='button']")).forEach(function (el) {
       markFocusable(el, { card: false });
     });
@@ -363,9 +398,11 @@
       return;
     }
 
-    if ((key === "Enter" || key === " ") && active && active.dataset.tvFocusable === "1" && typeof active.click === "function") {
+    if ((key === "Enter" || key === " ") && active && active.dataset.tvFocusable === "1") {
       event.preventDefault();
-      active.click();
+      if (!openFocusedCardDetails(active) && typeof active.click === "function") {
+        active.click();
+      }
     }
   }, true);
 
