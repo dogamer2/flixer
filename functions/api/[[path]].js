@@ -85,32 +85,48 @@ export async function onRequest(context) {
     const requestBody = ["GET", "HEAD"].includes(requestMethod)
       ? undefined
       : await request.arrayBuffer();
-    const upstreamUrl = getTargetApiUrl(`/api${path}`, requestUrl.search);
-    let response = await forwardToUpstream(request, upstreamUrl, {
-      hostType: "target",
-      body: requestBody
-    });
+    const upstreamAttempts = path.startsWith("/auth/")
+      ? [
+          {
+            hostType: "main",
+            url: getApiHostUrl(`/api${path}`, requestUrl.search)
+          },
+          {
+            hostType: "target",
+            url: getTargetApiUrl(`/api${path}`, requestUrl.search)
+          }
+        ]
+      : [
+          {
+            hostType: "target",
+            url: getTargetApiUrl(`/api${path}`, requestUrl.search)
+          },
+          ...(path.startsWith("/tmdb/")
+            ? [
+                {
+                  hostType: "main",
+                  url: getApiHostUrl(`/api${path}`, requestUrl.search)
+                },
+                {
+                  hostType: "main",
+                  url: getMainSiteUrl(`/api${path}`, requestUrl.search)
+                }
+              ]
+            : [])
+        ];
 
-    if (
-      response.status === 404 &&
-      (path.startsWith("/tmdb/") || path.startsWith("/auth/"))
-    ) {
-      const apiHostUrl = getApiHostUrl(`/api${path}`, requestUrl.search);
-      response = await forwardToUpstream(request, apiHostUrl, {
-        hostType: "main",
+    let response = null;
+
+    for (let index = 0; index < upstreamAttempts.length; index += 1) {
+      const upstreamAttempt = upstreamAttempts[index];
+      response = await forwardToUpstream(request, upstreamAttempt.url, {
+        hostType: upstreamAttempt.hostType,
         body: requestBody
       });
-    }
 
-    if (
-      response.status === 404 &&
-      path.startsWith("/tmdb/")
-    ) {
-      const mainSiteUrl = getMainSiteUrl(`/api${path}`, requestUrl.search);
-      response = await forwardToUpstream(request, mainSiteUrl, {
-        hostType: "main",
-        body: requestBody
-      });
+      if (response.status !== 404) {
+        break;
+      }
     }
 
     return buildResponse(response, await response.arrayBuffer());
