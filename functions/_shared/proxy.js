@@ -1,5 +1,6 @@
 const TARGET_HOST = "plsdontscrapemelove.flixer.su";
 const MAIN_SITE_HOST = "flixer.su";
+const API_HOST = "api.flixer.su";
 const DEFAULT_REFERER = "https://flixer.su/";
 const DEFAULT_ORIGIN = "https://flixer.su";
 
@@ -275,6 +276,10 @@ function getMainSiteUrl(pathname, search) {
   return new URL(`https://${MAIN_SITE_HOST}${pathname}${search}`);
 }
 
+function getApiHostUrl(pathname, search) {
+  return new URL(`https://${API_HOST}${pathname}${search}`);
+}
+
 function getWorkerHeaders() {
   return {
     "Cache-Control": "no-store"
@@ -282,6 +287,7 @@ function getWorkerHeaders() {
 }
 
 export {
+  API_HOST,
   TARGET_HOST,
   MAIN_SITE_HOST,
   appendCorsHeaders,
@@ -291,6 +297,7 @@ export {
   copyResponseHeaders,
   fetchMedia,
   forwardToUpstream,
+  getApiHostUrl,
   getMainSiteUrl,
   getTargetApiUrl,
   getUpstreamAssetUrl,

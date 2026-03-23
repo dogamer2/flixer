@@ -1,6 +1,7 @@
 import {
   buildResponse,
   forwardToUpstream,
+  getApiHostUrl,
   getMainSiteUrl,
   getTargetApiUrl,
   jsonResponse,
@@ -81,7 +82,24 @@ export async function onRequest(context) {
 
   try {
     const upstreamUrl = getTargetApiUrl(`/api${path}`, requestUrl.search);
-    const response = await forwardToUpstream(request, upstreamUrl, { hostType: "target" });
+    let response = await forwardToUpstream(request, upstreamUrl, { hostType: "target" });
+
+    if (
+      response.status === 404 &&
+      (path.startsWith("/tmdb/") || path.startsWith("/auth/"))
+    ) {
+      const apiHostUrl = getApiHostUrl(`/api${path}`, requestUrl.search);
+      response = await forwardToUpstream(request, apiHostUrl, { hostType: "main" });
+    }
+
+    if (
+      response.status === 404 &&
+      path.startsWith("/tmdb/")
+    ) {
+      const mainSiteUrl = getMainSiteUrl(`/api${path}`, requestUrl.search);
+      response = await forwardToUpstream(request, mainSiteUrl, { hostType: "main" });
+    }
+
     return buildResponse(response, await response.arrayBuffer());
   } catch (error) {
     return jsonResponse({ error: error.message }, 500);

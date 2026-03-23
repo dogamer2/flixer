@@ -2,6 +2,7 @@
   const DEV_PROXY_PORT = "3001";
   const LIVE_SUBTITLE_PROXY_URL = "https://flixer.su";
   const TARGET_DOMAIN = "plsdontscrapemelove.flixer.su";
+  const API_DOMAIN = "api.flixer.su";
   const DOM_URL_ATTRS = ["src", "href"];
   const DISCORD_INVITE_URL = "https://discord.gg/v87gDSVK5x";
   const hostname = window.location.hostname;
@@ -145,9 +146,13 @@
 
       const urlObj = new URL(url, window.location.origin);
       const isTargetHost = urlObj.hostname === TARGET_DOMAIN;
+      const isApiHost = urlObj.hostname === API_DOMAIN;
       const isWorkersMediaHost = urlObj.hostname.endsWith(".workers.dev");
       const isLiveSubtitleApi = urlObj.hostname === "flixer.su" && urlObj.pathname.startsWith("/api/subtitle");
       const isFlixerClientAsset = urlObj.hostname === "flixer.su" && (urlObj.pathname.startsWith("/assets/client/") || urlObj.pathname.startsWith("/assets/wasm/"));
+      const isAbsoluteFlixerApi =
+        (isApiHost || urlObj.hostname === "flixer.su") &&
+        urlObj.pathname.startsWith("/api/");
       const isLocalApi =
         (urlObj.origin === window.location.origin || urlObj.hostname === "localhost" || urlObj.hostname === "127.0.0.1") &&
         urlObj.pathname.startsWith("/api/");
@@ -158,6 +163,10 @@
 
       if (isFlixerClientAsset) {
         return urlObj.toString();
+      }
+
+      if (isAbsoluteFlixerApi) {
+        return PROXY_URL + urlObj.pathname + urlObj.search;
       }
 
       if (!IS_PRODUCTION_HOST && isWorkersMediaHost) {
