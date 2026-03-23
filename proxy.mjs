@@ -21,6 +21,7 @@ const ACCESS_CODE_GROUP_SIZE = 4;
 const ACCESS_CODE_INSERT_ATTEMPTS = 6;
 const localAccessCodeStore = new Map();
 
+app.set("trust proxy", true);
 app.use(express.raw({ type: "*/*", limit: "25mb" }));
 
 app.use((req, res, next) => {
@@ -548,7 +549,9 @@ function isLikelyHlsManifest(url, headers, body) {
 }
 
 function buildMediaProxyUrl(req, absoluteUrl) {
-  const base = `${req.protocol}://${req.get("host")}`;
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const protocol = forwardedProto || req.protocol || "https";
+  const base = `${protocol}://${req.get("host")}`;
   const proxyUrl = new URL("/__media_proxy__", base);
   proxyUrl.searchParams.set("url", absoluteUrl);
   return proxyUrl.toString();
