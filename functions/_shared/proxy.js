@@ -166,20 +166,31 @@ function buildMediaRequestHeaders(request, options = {}) {
     secFetchMode = "cors",
     secFetchSite = "cross-site",
     upgradeInsecureRequests,
-    includeClientHints = true
+    includeClientHints = true,
+    includeFetchMetadata = true,
+    includeUserAgent = true
   } = options;
   const headers = new Headers({
     accept: request.headers.get("accept") || accept,
     "accept-language": request.headers.get("accept-language") || DEFAULT_ACCEPT_LANGUAGE,
     "cache-control": "no-cache",
-    pragma: "no-cache",
-    "sec-fetch-dest": secFetchDest,
-    "sec-fetch-mode": secFetchMode,
-    "user-agent":
-      request.headers.get("x-forwarded-user-agent") ||
-      request.headers.get("user-agent") ||
-      DEFAULT_BROWSER_USER_AGENT
+    pragma: "no-cache"
   });
+
+  if (includeFetchMetadata) {
+    headers.set("sec-fetch-dest", secFetchDest);
+    headers.set("sec-fetch-mode", secFetchMode);
+    headers.set("sec-fetch-site", secFetchSite);
+  }
+
+  if (includeUserAgent) {
+    headers.set(
+      "user-agent",
+      request.headers.get("x-forwarded-user-agent") ||
+        request.headers.get("user-agent") ||
+        DEFAULT_BROWSER_USER_AGENT
+    );
+  }
 
   if (includeClientHints) {
     headers.set("sec-ch-ua", DEFAULT_SEC_CH_UA);
@@ -196,8 +207,6 @@ function buildMediaRequestHeaders(request, options = {}) {
     headers.set("referer", referer || DEFAULT_REFERER);
     headers.set("origin", origin || DEFAULT_ORIGIN);
   }
-
-  headers.set("sec-fetch-site", secFetchSite);
 
   if (upgradeInsecureRequests !== undefined) {
     headers.set("upgrade-insecure-requests", String(upgradeInsecureRequests));
@@ -219,6 +228,19 @@ async function fetchMedia(upstreamUrl, request) {
   const embeddedOrigin = getEmbeddedMediaOrigin(upstreamUrl);
   const attempts = isWorkersDev
     ? [
+        {
+          accept: "*/*",
+          includeSiteHeaders: false,
+          includeClientHints: false,
+          includeFetchMetadata: false,
+          includeUserAgent: false
+        },
+        {
+          accept: "*/*",
+          includeSiteHeaders: false,
+          includeClientHints: false,
+          includeFetchMetadata: false
+        },
         {
           includeSiteHeaders: true
         },
@@ -257,14 +279,17 @@ async function fetchMedia(upstreamUrl, request) {
                 secFetchDest: "empty",
                 secFetchMode: "no-cors",
                 secFetchSite: "same-site",
-                includeClientHints: false
+                includeClientHints: false,
+                includeFetchMetadata: false
               }
             ]
           : []),
         {
           accept: "*/*",
           includeSiteHeaders: false,
-          includeClientHints: false
+          includeClientHints: false,
+          includeFetchMetadata: false,
+          includeUserAgent: false
         },
         {
           includeSiteHeaders: false
