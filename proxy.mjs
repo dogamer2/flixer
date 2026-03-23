@@ -332,7 +332,7 @@ async function syncDiscordStatusMessage() {
 }
 
 async function setMemberRole(guildId, userId, roleId, shouldAdd) {
-  await fetch(
+  const response = await fetch(
     `${DISCORD_API_BASE}/guilds/${guildId}/members/${userId}/roles/${roleId}`,
     {
       headers: {
@@ -341,6 +341,13 @@ async function setMemberRole(guildId, userId, roleId, shouldAdd) {
       method: shouldAdd ? "PUT" : "DELETE",
     },
   );
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "");
+    throw new Error(
+      `Failed to ${shouldAdd ? "add" : "remove"} role ${roleId} for user ${userId} (${response.status}): ${errorBody}`,
+    );
+  }
 }
 
 function getRoleIdForEmoji(emojiName) {
@@ -379,7 +386,16 @@ async function handleReactionRoleEvent(eventType, payload) {
   }
 
   const shouldAdd = eventType === "MESSAGE_REACTION_ADD";
-  await setMemberRole(guildId, userId, roleId, shouldAdd);
+  try {
+    await setMemberRole(guildId, userId, roleId, shouldAdd);
+    console.log(
+      `[discord-role-sync] ${shouldAdd ? "added" : "removed"} role ${roleId} for user ${userId} from ${emojiName}`,
+    );
+  } catch (error) {
+    console.error(
+      `[discord-role-sync] ${error instanceof Error ? error.message : "Unknown role sync failure"}`,
+    );
+  }
 }
 
 function sendGatewayHeartbeat() {
