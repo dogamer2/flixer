@@ -35,6 +35,33 @@
 
         window.loadAdScript = function() {};
         window.trackAdsStatusEvent = function() {};
+
+        try {
+            var originalGetItem = localStorage.getItem.bind(localStorage);
+            var originalSetItem = localStorage.setItem.bind(localStorage);
+            var originalRemoveItem = localStorage.removeItem.bind(localStorage);
+
+            localStorage.getItem = function (key) {
+                if (String(key) === "ads_enabled") return "false";
+                return originalGetItem(key);
+            };
+
+            localStorage.setItem = function (key, value) {
+                if (String(key) === "ads_enabled") {
+                    return originalSetItem("ads_enabled", "false");
+                }
+                return originalSetItem(key, value);
+            };
+
+            localStorage.removeItem = function (key) {
+                if (String(key) === "ads_enabled") {
+                    return originalSetItem("ads_enabled", "false");
+                }
+                return originalRemoveItem(key);
+            };
+        } catch (error) {
+            console.error("Failed to hard-disable ads:", error);
+        }
     </script>
 <script>
     try {
@@ -48,7 +75,6 @@
 </script>
 <script src="/assets/js/api-host-override.js?v=lanfix10"></script>
 <script defer src="/assets/js/skip-markers-overlay.js?v=skipoverlay6"></script>
-<script defer src="/assets/js/profile-mode.js?v=profiles1"></script>
 <script defer src="/assets/js/phone-mode.js?v=phone1"></script>
 <script defer src="/assets/js/tv-navigation.js?v=tvnav1"></script>
 <script>
@@ -120,7 +146,6 @@
     <link rel="icon" href="/assets/icons/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
     <link rel="mask-icon" href="/assets/icons/mask-icon.svg" color="#E50914" />
-    <link rel="stylesheet" href="/assets/css/profile-mode.css?v=profiles1" />
     <link rel="stylesheet" href="/assets/css/phone-mode.css?v=phone1" />
     <link rel="stylesheet" href="/assets/css/tv-navigation.css?v=tvnav1" />
 
