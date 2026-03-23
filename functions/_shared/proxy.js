@@ -165,16 +165,14 @@ function buildMediaRequestHeaders(request, options = {}) {
     secFetchDest = "empty",
     secFetchMode = "cors",
     secFetchSite = "cross-site",
-    upgradeInsecureRequests
+    upgradeInsecureRequests,
+    includeClientHints = true
   } = options;
   const headers = new Headers({
     accept: request.headers.get("accept") || accept,
     "accept-language": request.headers.get("accept-language") || DEFAULT_ACCEPT_LANGUAGE,
     "cache-control": "no-cache",
     pragma: "no-cache",
-    "sec-ch-ua": DEFAULT_SEC_CH_UA,
-    "sec-ch-ua-mobile": DEFAULT_SEC_CH_UA_MOBILE,
-    "sec-ch-ua-platform": DEFAULT_SEC_CH_UA_PLATFORM,
     "sec-fetch-dest": secFetchDest,
     "sec-fetch-mode": secFetchMode,
     "user-agent":
@@ -182,6 +180,12 @@ function buildMediaRequestHeaders(request, options = {}) {
       request.headers.get("user-agent") ||
       DEFAULT_BROWSER_USER_AGENT
   });
+
+  if (includeClientHints) {
+    headers.set("sec-ch-ua", DEFAULT_SEC_CH_UA);
+    headers.set("sec-ch-ua-mobile", DEFAULT_SEC_CH_UA_MOBILE);
+    headers.set("sec-ch-ua-platform", DEFAULT_SEC_CH_UA_PLATFORM);
+  }
 
   const range = request.headers.get("range");
   if (range) {
@@ -226,6 +230,16 @@ async function fetchMedia(upstreamUrl, request) {
                 referer: `${embeddedOrigin}/`
               },
               {
+                includeSiteHeaders: true,
+                origin: null,
+                referer: `${embeddedOrigin}/`
+              },
+              {
+                includeSiteHeaders: true,
+                origin: null,
+                referer: upstreamUrl.toString()
+              },
+              {
                 accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 includeSiteHeaders: true,
                 origin: embeddedOrigin,
@@ -234,9 +248,24 @@ async function fetchMedia(upstreamUrl, request) {
                 secFetchMode: "navigate",
                 secFetchSite: "none",
                 upgradeInsecureRequests: 1
+              },
+              {
+                accept: "*/*",
+                includeSiteHeaders: true,
+                origin: null,
+                referer: `${embeddedOrigin}/`,
+                secFetchDest: "empty",
+                secFetchMode: "no-cors",
+                secFetchSite: "same-site",
+                includeClientHints: false
               }
             ]
           : []),
+        {
+          accept: "*/*",
+          includeSiteHeaders: false,
+          includeClientHints: false
+        },
         {
           includeSiteHeaders: false
         }

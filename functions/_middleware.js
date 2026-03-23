@@ -7,9 +7,15 @@ import {
   shouldBypassAccessGate,
   validateAccessSession,
 } from "./_shared/access.js";
+import { maybeSyncDiscordStatus } from "./_shared/discord-status.js";
 
 export async function onRequest(context) {
   const { request, env, next } = context;
+  const syncPromise = maybeSyncDiscordStatus(env, request);
+
+  if (syncPromise && typeof context.waitUntil === "function") {
+    context.waitUntil(syncPromise);
+  }
 
   if (shouldBypassAccessGate(request)) {
     return next();
