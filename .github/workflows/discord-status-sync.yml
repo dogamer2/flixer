@@ -1,0 +1,27 @@
+name: Discord Status Sync
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync-status:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Sync Discord status
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_STATUS_CHANNEL_ID: ${{ secrets.DISCORD_STATUS_CHANNEL_ID }}
+          DISCORD_STATUS_SITE_LABEL: ${{ secrets.DISCORD_STATUS_SITE_LABEL }}
+          DISCORD_STATUS_URL: ${{ secrets.DISCORD_STATUS_URL }}
+        run: node scripts/sync-discord-status.mjs

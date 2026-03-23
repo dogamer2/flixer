@@ -55,6 +55,8 @@ export function shouldBypassAccessGate(request) {
   const pathname = new URL(request.url).pathname;
   return (
     pathname.startsWith("/api/access/") ||
+    pathname === "/api/status" ||
+    pathname === "/api/status/" ||
     pathname === "/api/discord/interactions" ||
     pathname === "/api/discord/interactions/" ||
     GATE_PUBLIC_PATHS.has(pathname)
