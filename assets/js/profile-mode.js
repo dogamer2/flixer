@@ -4,14 +4,17 @@
   var ACTIVE_PROFILE_KEY = "flixer_active_profile_v1";
   var RATING_CACHE_KEY = "flixer_profile_rating_cache_v1";
   var STARTUP_SKIP_KEY = "flixer_profile_skip_chooser_once";
+  var PROFILE_SEEDED_KEY = "__seeded__";
   var ROOT_ID = "flixer-profile-root";
   var STYLE_SCOPE = "flixer-profile";
   var PROFILE_SCOPED_KEYS = new Set(["myList", "watch_progress", "notificationState"]);
   var PROFILE_SCOPED_PREFIXES = ["progress_"];
   var PIN_ITERATIONS = 120000;
   var PROFILE_LIMIT = 6;
+  var API_BASE = "https://api.flixer.su/api";
   var currentUser = null;
   var root = null;
+  var nativeFetch = typeof window.fetch === "function" ? window.fetch.bind(window) : null;
   var state = {
     chooserOpen: false,
     manageOpen: false,
@@ -201,7 +204,6 @@
     var activeProfile = getActiveProfile();
     if (!accountId || !activeProfile) return false;
     if (!getAccountMode(accountId)) return false;
-    if (activeProfile.isPrimary) return false;
     return isProfileScopedKey(key);
   }
 
@@ -247,21 +249,68 @@
   function getScopedJson(scopeName, fallback) {
     var accountId = getAccountId();
     var activeProfile = getActiveProfile();
-    if (!accountId || !activeProfile || activeProfile.isPrimary) return fallback;
+    if (!accountId || !activeProfile) return fallback;
     return readStorage(profileStorageKey(accountId, activeProfile.id, scopeName), fallback);
   }
 
   function setScopedJson(scopeName, value) {
     var accountId = getAccountId();
     var activeProfile = getActiveProfile();
-    if (!accountId || !activeProfile || activeProfile.isPrimary) return;
+    if (!accountId || !activeProfile) return;
     writeStorage(profileStorageKey(accountId, activeProfile.id, scopeName), value);
   }
 
   function shouldInterceptProfileData() {
     var accountId = getAccountId();
     var activeProfile = getActiveProfile();
-    return !!(accountId && activeProfile && getAccountMode(accountId) && !activeProfile.isPrimary);
+    return !!(accountId && activeProfile && getAccountMode(accountId));
+  }
+
+  function writeProfileScopedJson(accountId, profileId, scopeName, value) {
+    if (!accountId || !profileId) return;
+    writeStorage(profileStorageKey(accountId, profileId, scopeName), value);
+  }
+
+  function readProfileScopedJson(accountId, profileId, scopeName, fallback) {
+    if (!accountId || !profileId) return fallback;
+    return readStorage(profileStorageKey(accountId, profileId, scopeName), fallback);
+  }
+
+  async function seedProfileDataIfNeeded() {
+    var accountId = getAccountId();
+    if (!accountId || !getAccountMode(accountId) || !nativeFetch) return;
+    var profiles = normalizeProfiles(getProfilesForAccount(accountId), currentUser);
+    var defaultProfile = profiles.find(function (profile) { return profile.isPrimary; }) || profiles[0];
+    if (!defaultProfile) return;
+    if (readProfileScopedJson(accountId, defaultProfile.id, PROFILE_SEEDED_KEY, false)) return;
+
+    var token = currentToken();
+    if (!token) return;
+    var headers = { Authorization: "Bearer " + token };
+
+    try {
+      var results = await Promise.allSettled([
+        nativeFetch(API_BASE + "/progress", { headers: headers }),
+        nativeFetch(API_BASE + "/auth/my-list", { headers: headers })
+      ]);
+
+      var progress = {};
+      var myList = [];
+
+      if (results[0].status === "fulfilled" && results[0].value.ok) {
+        progress = await results[0].value.json();
+      }
+
+      if (results[1].status === "fulfilled" && results[1].value.ok) {
+        var listJson = await results[1].value.json();
+        myList = listJson && Array.isArray(listJson.myList) ? listJson.myList : [];
+      }
+
+      writeProfileScopedJson(accountId, defaultProfile.id, "watch_progress", progress || {});
+      writeProfileScopedJson(accountId, defaultProfile.id, "myList_api", myList || []);
+      writeProfileScopedJson(accountId, defaultProfile.id, "myList", myList || []);
+      writeProfileScopedJson(accountId, defaultProfile.id, PROFILE_SEEDED_KEY, true);
+    } catch (_error) {}
   }
 
   function jsonResponse(body, status) {
@@ -845,6 +894,7 @@
 
   function renderLauncher() {
     if (!currentUser || !getAccountMode(getAccountId())) return "";
+    if (findAccountControl()) return "";
     var activeProfile = getActiveProfile();
     if (!activeProfile) return "";
     return (
@@ -908,7 +958,7 @@
     }
 
     try {
-      var response = await window.fetch("https://api.flixer.su/api/auth/profile", {
+      var response = await nativeFetch("https://api.flixer.su/api/auth/profile", {
         headers: { Authorization: "Bearer " + token }
       });
       if (!response.ok) {
@@ -927,8 +977,89 @@
     }
   }
 
+  function findAccountControl() {
+    if (!currentUser) return null;
+    var header = document.querySelector("header");
+    if (!(header instanceof HTMLElement)) return null;
+    var username = String(currentUser.username || "").trim().toLowerCase();
+    if (!username) return null;
+
+    var best = null;
+    var bestScore = Infinity;
+
+    Array.from(header.querySelectorAll("button, a, div")).forEach(function (node) {
+      if (!(node instanceof HTMLElement)) return;
+      var text = String(node.textContent || "").trim().toLowerCase();
+      if (!text || text.indexOf(username) === -1) return;
+      var rect = node.getBoundingClientRect();
+      if (rect.width < 40 || rect.width > 260 || rect.height < 20 || rect.height > 90) return;
+      if (!node.querySelector("img") && !/^[a-z0-9 _-]+$/i.test(String(node.textContent || "").trim())) return;
+      var score = Math.abs(window.innerWidth - rect.right) + Math.abs(rect.top) * 0.2;
+      if (score < bestScore) {
+        best = node;
+        bestScore = score;
+      }
+    });
+
+    return best;
+  }
+
+  function syncAccountControl() {
+    var control = findAccountControl();
+    if (!(control instanceof HTMLElement)) return;
+
+    var activeProfile = getActiveProfile();
+    var enabled = !!(activeProfile && getAccountMode(getAccountId()));
+    var username = String(currentUser && currentUser.username || "").trim();
+
+    if (!control.dataset.profileOriginalCursor) {
+      control.dataset.profileOriginalCursor = control.style.cursor || "";
+    }
+
+    Array.from(control.querySelectorAll("span, div")).forEach(function (node) {
+      if (!(node instanceof HTMLElement)) return;
+      var text = String(node.textContent || "").trim();
+      if (!text) return;
+      if (text !== username && text !== control.dataset.profileOriginalName) return;
+      if (!node.dataset.profileOriginalText) {
+        node.dataset.profileOriginalText = text;
+      }
+      if (enabled && activeProfile) {
+        node.textContent = activeProfile.name;
+        control.dataset.profileOriginalName = node.dataset.profileOriginalText;
+      } else if (node.dataset.profileOriginalText) {
+        node.textContent = node.dataset.profileOriginalText;
+      }
+    });
+
+    var image = control.querySelector("img");
+    if (image instanceof HTMLImageElement) {
+      if (!image.dataset.profileOriginalSrc) {
+        image.dataset.profileOriginalSrc = image.getAttribute("src") || "";
+      }
+      if (enabled && activeProfile && activeProfile.avatarUrl) {
+        image.src = activeProfile.avatarUrl;
+      } else if (image.dataset.profileOriginalSrc) {
+        image.src = image.dataset.profileOriginalSrc;
+      }
+    }
+
+    if (enabled) {
+      control.dataset.profileAction = "open-chooser";
+      control.dataset.profileAccountBound = "1";
+      control.style.cursor = "pointer";
+      control.title = "Switch profiles";
+    } else {
+      delete control.dataset.profileAction;
+      delete control.dataset.profileAccountBound;
+      control.style.cursor = control.dataset.profileOriginalCursor || "";
+      control.removeAttribute("title");
+    }
+  }
+
   function maybeInjectSettingsButton() {
     if (!currentUser) return;
+    syncAccountControl();
     var candidates = Array.from(document.querySelectorAll("div, section")).filter(function (node) {
       if (!(node instanceof HTMLElement)) return false;
       if (node.dataset.profileModeInjected === "1") return false;
@@ -1053,6 +1184,7 @@
       var actionTarget = event.target && event.target.closest("[data-profile-action],[data-profile-select],[data-profile-edit],[data-profile-delete]");
       if (actionTarget) {
         event.preventDefault();
+        event.stopPropagation();
       }
 
       var selectId = actionTarget && actionTarget.getAttribute("data-profile-select");
@@ -1151,6 +1283,9 @@
   function handleAuthChange() {
     loadCurrentUser().then(function () {
       syncStateFromStorage();
+      seedProfileDataIfNeeded().then(function () {
+        syncAccountControl();
+      });
       render();
       enforceKidsRouteGuard();
     });
