@@ -34,6 +34,10 @@ export async function onRequest(context) {
     const bodyBuffer = await response.arrayBuffer();
     const previewText = new TextDecoder().decode(bodyBuffer.slice(0, Math.min(bodyBuffer.byteLength, 2048)));
 
+    if (!response.ok) {
+      return buildResponse(response, bodyBuffer, getWorkerHeaders());
+    }
+
     if (isLikelyHlsManifest(upstreamUrl, response.headers, previewText)) {
       const fullText = new TextDecoder().decode(bodyBuffer);
       const rewrittenBody = rewriteManifestBody(fullText, upstreamUrl, request);

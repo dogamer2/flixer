@@ -12,6 +12,7 @@ const ACCESS_CODE_INSERT_ATTEMPTS = 6;
 const LOCAL_ACCESS_CODE_STORE_KEY = "__FLIXER_LOCAL_ACCESS_CODES__";
 const DISCORD_INVITE_URL = "https://discord.gg/v87gDSVK5x";
 const GATE_PUBLIC_PATHS = new Set([
+  "/__media_proxy__",
   "/favicon.ico",
   "/assets/icons/apple-touch-icon.png",
   "/assets/icons/favicon.ico",
@@ -299,8 +300,8 @@ export function renderAccessGatePage(request, options = {}) {
     "label{display:block;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.58);margin-bottom:12px;text-align:center}",
     "input{width:100%;padding:16px 18px;border-radius:16px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.04);color:#fff;font-size:16px;text-align:center;outline:none;transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}",
     "input:focus{border-color:rgba(229,9,20,.8);box-shadow:0 0 0 4px rgba(229,9,20,.16)}",
-    "button{width:100%;margin-top:16px;padding:16px 18px;border:0;border-radius:16px;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 18px 44px rgba(229,9,20,.24);color:#fff;font-size:15px;font-weight:800;letter-spacing:.01em;cursor:pointer;transition:transform .16s ease,filter .16s ease,box-shadow .16s ease}",
-    "button:hover{filter:brightness(1.05);box-shadow:0 22px 50px rgba(229,9,20,.28)}button:active{transform:translateY(1px)}button:disabled{opacity:.65;cursor:wait;box-shadow:none}",
+    "button{width:100%;margin-top:16px;padding:16px 18px;appearance:none;-webkit-appearance:none;outline:none;border:none;border-radius:999px;background:linear-gradient(135deg,#ff2a36 0%,#e50914 52%,#b20710 100%);box-shadow:0 20px 46px rgba(229,9,20,.24),inset 0 1px 0 rgba(255,255,255,.18);color:#fff;font-size:15px;font-weight:800;letter-spacing:.01em;cursor:pointer;transition:transform .16s ease,filter .16s ease,box-shadow .16s ease}",
+    "button:hover{filter:brightness(1.05);box-shadow:0 24px 54px rgba(229,9,20,.3),inset 0 1px 0 rgba(255,255,255,.22)}button:active{transform:translateY(1px)}button:focus-visible{box-shadow:0 0 0 4px rgba(229,9,20,.18),0 20px 46px rgba(229,9,20,.24),inset 0 1px 0 rgba(255,255,255,.18)}button:disabled{opacity:.65;cursor:wait;box-shadow:none}",
     ".secondary-link{display:flex;align-items:center;justify-content:center;width:fit-content;margin:14px auto 0;color:var(--discord);text-decoration:none;transition:transform .16s ease,filter .16s ease}",
     ".secondary-link:hover{filter:brightness(1.08);transform:translateY(-1px)}",
     ".secondary-link:focus-visible{outline:2px solid rgba(88,101,242,.9);outline-offset:6px;border-radius:999px}",

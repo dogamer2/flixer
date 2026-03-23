@@ -12,11 +12,12 @@ import {
 
 export async function onRequest(context) {
   const { request, params } = context;
+  const requestMethod = request.method.toUpperCase();
   const normalizedPath = Array.isArray(params.path)
     ? params.path.join("/")
     : String(params.path || "");
 
-  if (request.method === "OPTIONS") {
+  if (requestMethod === "OPTIONS") {
     return textResponse("", 204);
   }
 
@@ -81,15 +82,24 @@ export async function onRequest(context) {
   }
 
   try {
+    const requestBody = ["GET", "HEAD"].includes(requestMethod)
+      ? undefined
+      : await request.arrayBuffer();
     const upstreamUrl = getTargetApiUrl(`/api${path}`, requestUrl.search);
-    let response = await forwardToUpstream(request, upstreamUrl, { hostType: "target" });
+    let response = await forwardToUpstream(request, upstreamUrl, {
+      hostType: "target",
+      body: requestBody
+    });
 
     if (
       response.status === 404 &&
       (path.startsWith("/tmdb/") || path.startsWith("/auth/"))
     ) {
       const apiHostUrl = getApiHostUrl(`/api${path}`, requestUrl.search);
-      response = await forwardToUpstream(request, apiHostUrl, { hostType: "main" });
+      response = await forwardToUpstream(request, apiHostUrl, {
+        hostType: "main",
+        body: requestBody
+      });
     }
 
     if (
@@ -97,7 +107,10 @@ export async function onRequest(context) {
       path.startsWith("/tmdb/")
     ) {
       const mainSiteUrl = getMainSiteUrl(`/api${path}`, requestUrl.search);
-      response = await forwardToUpstream(request, mainSiteUrl, { hostType: "main" });
+      response = await forwardToUpstream(request, mainSiteUrl, {
+        hostType: "main",
+        body: requestBody
+      });
     }
 
     return buildResponse(response, await response.arrayBuffer());

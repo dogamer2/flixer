@@ -3,6 +3,8 @@ const MAIN_SITE_HOST = "flixer.su";
 const API_HOST = "api.flixer.su";
 const DEFAULT_REFERER = "https://flixer.su/";
 const DEFAULT_ORIGIN = "https://flixer.su";
+const DEFAULT_BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 
 const BLOCKED_RESPONSE_HEADERS = new Set([
   "content-encoding",
@@ -88,7 +90,11 @@ function buildProxyHeaders(request, overrides = {}) {
   return headers;
 }
 
-async function forwardToUpstream(request, upstreamUrl, { hostType = "target", headers: headerOverrides = {} } = {}) {
+async function forwardToUpstream(
+  request,
+  upstreamUrl,
+  { hostType = "target", headers: headerOverrides = {}, body } = {}
+) {
   const headers = buildProxyHeaders(request, {
     referer: DEFAULT_REFERER,
     origin: DEFAULT_ORIGIN,
@@ -103,7 +109,7 @@ async function forwardToUpstream(request, upstreamUrl, { hostType = "target", he
   };
 
   if (!["GET", "HEAD"].includes(request.method.toUpperCase())) {
-    init.body = await request.arrayBuffer();
+    init.body = body !== undefined ? body : await request.arrayBuffer();
   }
 
   return fetch(upstreamUrl.toString(), init);
@@ -112,17 +118,16 @@ async function forwardToUpstream(request, upstreamUrl, { hostType = "target", he
 function buildMediaRequestHeaders(request, includeSiteHeaders = true) {
   const headers = new Headers({
     accept: request.headers.get("accept") || "*/*",
-    "accept-language": request.headers.get("accept-language") || "en-US,en;q=0.9"
+    "accept-language": request.headers.get("accept-language") || "en-US,en;q=0.9",
+    "user-agent":
+      request.headers.get("x-forwarded-user-agent") ||
+      request.headers.get("user-agent") ||
+      DEFAULT_BROWSER_USER_AGENT
   });
 
   const range = request.headers.get("range");
   if (range) {
     headers.set("range", range);
-  }
-
-  const userAgent = request.headers.get("x-forwarded-user-agent") || request.headers.get("user-agent");
-  if (userAgent) {
-    headers.set("user-agent", userAgent);
   }
 
   if (includeSiteHeaders) {
