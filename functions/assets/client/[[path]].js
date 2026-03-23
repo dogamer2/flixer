@@ -13,7 +13,9 @@ export async function onRequest(context) {
     return textResponse("", 204);
   }
 
-  const relativePath = params.path || "";
+  const relativePath = Array.isArray(params.path)
+    ? params.path.join("/")
+    : String(params.path || "");
   if (!relativePath) {
     return textResponse("Missing asset path", 400);
   }

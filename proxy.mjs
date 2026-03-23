@@ -475,6 +475,7 @@ function validateAccessSession(req) {
 
 function redeemAccessCode(req, rawCode) {
   cleanupLocalAccessCodeStore();
+  const secret = getAccessSecret(req);
   const codeHash = hashAccessCodeForStorage(req, normalizeAccessCode(rawCode));
   const storedCode = localAccessCodeStore.get(codeHash);
 

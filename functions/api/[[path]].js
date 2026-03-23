@@ -11,12 +11,15 @@ import {
 
 export async function onRequest(context) {
   const { request, params } = context;
+  const normalizedPath = Array.isArray(params.path)
+    ? params.path.join("/")
+    : String(params.path || "");
 
   if (request.method === "OPTIONS") {
     return textResponse("", 204);
   }
 
-  const path = `/${params.path || ""}`;
+  const path = `/${normalizedPath}`;
   const requestUrl = new URL(request.url);
 
   if (path === "/tmdb-sign") {
