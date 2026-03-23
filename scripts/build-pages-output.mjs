@@ -39,6 +39,10 @@ function shouldIncludeSource(source) {
     return false;
   }
 
+  if (normalizedRelativePath.startsWith("movies/") && normalizedRelativePath !== "movies/index.html") {
+    return false;
+  }
+
   return true;
 }
 
