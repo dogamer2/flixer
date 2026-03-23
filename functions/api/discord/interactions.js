@@ -14,6 +14,8 @@ const DISCORD_INTERACTION_PING = 1;
 const DISCORD_INTERACTION_APPLICATION_COMMAND = 2;
 const DISCORD_INTERACTION_CHANNEL_MESSAGE = 4;
 const DISCORD_FLAG_EPHEMERAL = 1 << 6;
+const ANNOUNCEMENT_ROLE_ID = "1485576547829022840";
+const REACTION_ROLE_CHANNEL_ID = "1485575611081687090";
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -60,7 +62,7 @@ export async function onRequest(context) {
 
   const commandName = String(payload?.data?.name || "").toLowerCase();
 
-  if (commandName !== "generatecode") {
+  if (commandName !== "generatecode" && commandName !== "announce") {
     return discordMessageResponse("Unsupported command");
   }
 
@@ -68,6 +70,35 @@ export async function onRequest(context) {
 
   if (interactionUserId !== getAllowedDiscordUserId(env)) {
     return discordMessageResponse(getDeniedDiscordMessage());
+  }
+
+  if (commandName === "announce") {
+    const rawMessage = getStringOption(payload, "message");
+
+    if (!rawMessage) {
+      return discordMessageResponse("Add a message for the announcement.");
+    }
+
+    const botToken = String(env?.DISCORD_BOT_TOKEN || env?.DISCORD_TOKEN || "").trim();
+
+    if (!botToken) {
+      return discordMessageResponse("Discord bot token is missing.");
+    }
+
+    try {
+      await discordApiRequest(`/channels/${payload.channel_id}/messages`, botToken, {
+        body: JSON.stringify({
+          content: formatAnnouncementMessage(rawMessage),
+        }),
+        method: "POST",
+      });
+    } catch (error) {
+      return discordMessageResponse(
+        error instanceof Error ? error.message : "Failed to publish announcement",
+      );
+    }
+
+    return discordMessageResponse("Announcement posted.");
   }
 
   let accessCode;
@@ -95,4 +126,61 @@ function discordMessageResponse(content) {
     },
     type: DISCORD_INTERACTION_CHANNEL_MESSAGE,
   });
+}
+
+function getStringOption(payload, optionName) {
+  const options = Array.isArray(payload?.data?.options) ? payload.data.options : [];
+  const match = options.find((option) => String(option?.name || "").toLowerCase() === optionName);
+  return String(match?.value || "").trim();
+}
+
+async function discordApiRequest(path, token, init = {}) {
+  const response = await fetch(`https://discord.com/api/v10${path}`, {
+    ...init,
+    headers: {
+      authorization: `Bot ${token}`,
+      "content-type": "application/json",
+      ...(init.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Discord API request failed (${response.status}): ${errorBody}`);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+}
+
+function formatAnnouncementMessage(rawMessage) {
+  const cleaned = String(rawMessage || "").replace(/\s+/g, " ").trim();
+  const normalized = cleaned.replace(/\s*([.!?])\s*/g, "$1 ").trim();
+  const sentences = normalized
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const lines = sentences.length > 1 ? sentences : [ensureSentence(normalized)];
+
+  return [
+    `<@&${ANNOUNCEMENT_ROLE_ID}>`,
+    "**Announcement**",
+    lines.map((line) => `- ${ensureSentence(line)}`).join("\n"),
+    "",
+    `React with 2️⃣ in <#${REACTION_ROLE_CHANNEL_ID}> to get future announcement alerts.`,
+  ].join("\n");
+}
+
+function ensureSentence(value) {
+  const trimmed = String(value || "").trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  const normalized = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  return /[.!?]$/.test(normalized) ? normalized : `${normalized}.`;
 }

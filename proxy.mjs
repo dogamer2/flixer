@@ -20,6 +20,31 @@ const ACCESS_CODE_GROUP_COUNT = 4;
 const ACCESS_CODE_GROUP_SIZE = 4;
 const ACCESS_CODE_INSERT_ATTEMPTS = 6;
 const localAccessCodeStore = new Map();
+const DISCORD_API_BASE = "https://discord.com/api/v10";
+const DISCORD_GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json";
+const DEFAULT_STATUS_URL = "https://flixercc.pages.dev/api/status";
+const DEFAULT_STATUS_CHANNEL_ID = "1485492554374975538";
+const STATUS_MESSAGE_ID = "1485547180570837003";
+const REACTION_ROLE_CHANNEL_ID = "1485575611081687090";
+const STATUS_ROLE_ID = "1485575817718403072";
+const ANNOUNCEMENT_ROLE_ID = "1485576547829022840";
+const ROLE_MENU_REACTIONS = ["1️⃣", "2️⃣"];
+const STATUS_SYNC_INTERVAL_MS = 60 * 1000;
+const ROLE_MENU_MARKER = "[role-menu-v1]";
+const DISCORD_ALLOWED_USER_ID = "1384867079357861918";
+const GATEWAY_INTENTS = 1 | 1024;
+const discordRuntimeState = {
+  gatewayStarted: false,
+  heartbeatHandle: null,
+  heartbeatIntervalMs: 0,
+  lastSequence: null,
+  roleMenuMessageId: "",
+  sessionId: "",
+  statusInFlight: null,
+  lastKnownStatus: null,
+  statusIntervalHandle: null,
+  ws: null,
+};
 
 app.set("trust proxy", true);
 app.use(express.raw({ type: "*/*", limit: "25mb" }));
@@ -129,6 +154,322 @@ function buildVidsrcMediaRequestHeaders(req) {
   }
 
   return headers;
+}
+
+function getDiscordBotToken() {
+  return String(process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN || "").trim();
+}
+
+function getStatusChannelId() {
+  return String(process.env.DISCORD_STATUS_CHANNEL_ID || DEFAULT_STATUS_CHANNEL_ID).trim();
+}
+
+function getStatusSiteLabel() {
+  return String(process.env.DISCORD_STATUS_SITE_LABEL || "Flixer").trim() || "Flixer";
+}
+
+function getStatusUrl() {
+  return String(process.env.DISCORD_STATUS_URL || DEFAULT_STATUS_URL).trim() || DEFAULT_STATUS_URL;
+}
+
+async function discordApiRequest(path, init = {}) {
+  const token = getDiscordBotToken();
+
+  if (!token) {
+    throw new Error("Missing DISCORD_BOT_TOKEN");
+  }
+
+  const response = await fetch(`${DISCORD_API_BASE}${path}`, {
+    ...init,
+    headers: {
+      authorization: `Bot ${token}`,
+      "content-type": "application/json",
+      ...(init.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Discord API request failed (${response.status}): ${errorBody}`);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+}
+
+function buildRoleMenuMessage() {
+  return [
+    ROLE_MENU_MARKER,
+    "**Choose your notifications**",
+    "React below to manage which updates you want from Flixer.",
+    "",
+    `1️⃣ <@&${STATUS_ROLE_ID}> for live service status updates`,
+    `2️⃣ <@&${ANNOUNCEMENT_ROLE_ID}> for feature launches, fixes, and announcements`,
+    "",
+    "Remove a reaction at any time to opt out.",
+  ].join("\n");
+}
+
+function buildStatusMessage(siteLabel, isActive) {
+  const stateLabel = isActive ? "Online" : "Offline";
+  const icon = isActive ? "🟢" : "🔴";
+  const checkedAt = Math.floor(Date.now() / 1000);
+
+  return [
+    `**${siteLabel} Status**`,
+    `${icon} **${stateLabel}**`,
+    `Last checked: <t:${checkedAt}:R>`,
+  ].join("\n");
+}
+
+async function ensureRoleMenuMessage() {
+  const channelId = REACTION_ROLE_CHANNEL_ID;
+  const messages = await discordApiRequest(`/channels/${channelId}/messages?limit=50`, {
+    method: "GET",
+  });
+  const existing = Array.isArray(messages)
+    ? messages.find(
+        (message) =>
+          message &&
+          message.author &&
+          message.author.bot &&
+          typeof message.content === "string" &&
+          message.content.includes(ROLE_MENU_MARKER),
+      )
+    : null;
+
+  const content = buildRoleMenuMessage();
+  const message = existing
+    ? await discordApiRequest(`/channels/${channelId}/messages/${existing.id}`, {
+        body: JSON.stringify({ content }),
+        method: "PATCH",
+      })
+    : await discordApiRequest(`/channels/${channelId}/messages`, {
+        body: JSON.stringify({ content }),
+        method: "POST",
+      });
+
+  discordRuntimeState.roleMenuMessageId = String(message?.id || "");
+
+  for (const emoji of ROLE_MENU_REACTIONS) {
+    await fetch(
+      `${DISCORD_API_BASE}/channels/${channelId}/messages/${discordRuntimeState.roleMenuMessageId}/reactions/${encodeURIComponent(emoji)}/@me`,
+      {
+        headers: {
+          authorization: `Bot ${getDiscordBotToken()}`,
+        },
+        method: "PUT",
+      },
+    );
+  }
+}
+
+async function probeSiteStatusUrl() {
+  const timeout = AbortSignal.timeout(10_000);
+
+  try {
+    const response = await fetch(getStatusUrl(), {
+      headers: {
+        accept: "application/json",
+        "cache-control": "no-cache",
+      },
+      method: "GET",
+      signal: timeout,
+    });
+    const payload = await response.json().catch(() => ({}));
+    return response.ok && payload && payload.status === "active";
+  } catch {
+    return false;
+  }
+}
+
+async function syncDiscordStatusMessage() {
+  if (discordRuntimeState.statusInFlight) {
+    return discordRuntimeState.statusInFlight;
+  }
+
+  discordRuntimeState.statusInFlight = (async () => {
+    const isActive = await probeSiteStatusUrl();
+    const previousStatus = discordRuntimeState.lastKnownStatus;
+    const changed = typeof previousStatus === "boolean" && previousStatus !== isActive;
+    const content = [
+      changed ? `<@&${STATUS_ROLE_ID}>` : null,
+      buildStatusMessage(getStatusSiteLabel(), isActive),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    await discordApiRequest(`/channels/${getStatusChannelId()}/messages/${STATUS_MESSAGE_ID}`, {
+      body: JSON.stringify({
+        allowed_mentions: changed ? { parse: [], roles: [STATUS_ROLE_ID] } : { parse: [] },
+        content,
+      }),
+      method: "PATCH",
+    });
+
+    discordRuntimeState.lastKnownStatus = isActive;
+  })()
+    .catch((error) => {
+      console.error(error instanceof Error ? error.message : error);
+    })
+    .finally(() => {
+      discordRuntimeState.statusInFlight = null;
+    });
+
+  return discordRuntimeState.statusInFlight;
+}
+
+async function setMemberRole(guildId, userId, roleId, shouldAdd) {
+  await fetch(
+    `${DISCORD_API_BASE}/guilds/${guildId}/members/${userId}/roles/${roleId}`,
+    {
+      headers: {
+        authorization: `Bot ${getDiscordBotToken()}`,
+      },
+      method: shouldAdd ? "PUT" : "DELETE",
+    },
+  );
+}
+
+function getRoleIdForEmoji(emojiName) {
+  if (emojiName === "1️⃣") {
+    return STATUS_ROLE_ID;
+  }
+
+  if (emojiName === "2️⃣") {
+    return ANNOUNCEMENT_ROLE_ID;
+  }
+
+  return "";
+}
+
+async function handleReactionRoleEvent(eventType, payload) {
+  const messageId = String(payload?.message_id || "");
+  const guildId = String(payload?.guild_id || "");
+  const userId = String(payload?.user_id || payload?.member?.user?.id || "");
+  const emojiName = String(payload?.emoji?.name || "");
+  const roleId = getRoleIdForEmoji(emojiName);
+
+  if (!guildId || !userId || !roleId || !discordRuntimeState.roleMenuMessageId) {
+    return;
+  }
+
+  if (messageId !== discordRuntimeState.roleMenuMessageId) {
+    return;
+  }
+
+  const shouldAdd = eventType === "MESSAGE_REACTION_ADD";
+  await setMemberRole(guildId, userId, roleId, shouldAdd);
+}
+
+function sendGatewayHeartbeat() {
+  if (discordRuntimeState.ws && discordRuntimeState.ws.readyState === WebSocket.OPEN) {
+    discordRuntimeState.ws.send(
+      JSON.stringify({
+        d: discordRuntimeState.lastSequence,
+        op: 1,
+      }),
+    );
+  }
+}
+
+function clearGatewayHeartbeat() {
+  if (discordRuntimeState.heartbeatHandle) {
+    clearInterval(discordRuntimeState.heartbeatHandle);
+    discordRuntimeState.heartbeatHandle = null;
+  }
+}
+
+function connectDiscordGateway() {
+  const token = getDiscordBotToken();
+
+  if (!token) {
+    return;
+  }
+
+  const ws = new WebSocket(DISCORD_GATEWAY_URL);
+  discordRuntimeState.ws = ws;
+
+  ws.addEventListener("open", () => {
+    console.log("🤖 Discord gateway connected");
+  });
+
+  ws.addEventListener("message", async (event) => {
+    let payload;
+
+    try {
+      payload = JSON.parse(String(event.data || ""));
+    } catch {
+      return;
+    }
+
+    if (typeof payload?.s === "number") {
+      discordRuntimeState.lastSequence = payload.s;
+    }
+
+    if (payload?.op === 10) {
+      discordRuntimeState.heartbeatIntervalMs = Number(payload.d?.heartbeat_interval || 45_000);
+      clearGatewayHeartbeat();
+      discordRuntimeState.heartbeatHandle = setInterval(
+        sendGatewayHeartbeat,
+        discordRuntimeState.heartbeatIntervalMs,
+      );
+      sendGatewayHeartbeat();
+      ws.send(
+        JSON.stringify({
+          d: {
+            intents: GATEWAY_INTENTS,
+            properties: {
+              browser: "flixer-bot",
+              device: "flixer-bot",
+              os: process.platform,
+            },
+            token,
+          },
+          op: 2,
+        }),
+      );
+      return;
+    }
+
+    if (payload?.op === 7) {
+      ws.close();
+      return;
+    }
+
+    if (payload?.t === "READY") {
+      discordRuntimeState.sessionId = String(payload.d?.session_id || "");
+      await ensureRoleMenuMessage();
+      await syncDiscordStatusMessage();
+      return;
+    }
+
+    if (payload?.t === "MESSAGE_REACTION_ADD" || payload?.t === "MESSAGE_REACTION_REMOVE") {
+      await handleReactionRoleEvent(payload.t, payload.d);
+    }
+  });
+
+  const reconnect = () => {
+    clearGatewayHeartbeat();
+    setTimeout(connectDiscordGateway, 5_000);
+  };
+
+  ws.addEventListener("close", reconnect);
+  ws.addEventListener("error", reconnect);
+}
+
+function startDiscordAutomation() {
+  if (discordRuntimeState.gatewayStarted || !getDiscordBotToken()) {
+    return;
+  }
+
+  discordRuntimeState.gatewayStarted = true;
+  connectDiscordGateway();
+  syncDiscordStatusMessage();
+  discordRuntimeState.statusIntervalHandle = setInterval(syncDiscordStatusMessage, STATUS_SYNC_INTERVAL_MS);
 }
 
 async function fetchMediaAttempt(upstreamUrl, headers) {
@@ -795,35 +1136,27 @@ app.all(/.*/, async (req, res) => {
   console.log(`🎯 Upstream: ${upstreamHost}`);
 
   try {
-    const response = await gotScraping({
-      url: targetUrl,
-      method: req.method,
-      http2: true,
-      useHeaderGenerator: true,
-      headerGeneratorOptions: {
-        browsers: [{ name: "chrome", minVersion: 124 }],
-        devices: ["desktop"],
-        operatingSystems: ["windows"]
-      },
+    const response = await fetch(targetUrl, {
+      body: req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
       headers: {
         ...browserHeaders,
         referer: "https://flixer.su/",
         origin: "https://flixer.su",
         "sec-fetch-site": "same-site"
       },
-      body: req.method === "GET" || req.method === "HEAD" ? undefined : req.body,
-      responseType: "buffer",
-      throwHttpErrors: false
+      method: req.method,
+      redirect: "follow"
     });
+    const responseBody = Buffer.from(await response.arrayBuffer());
 
-    if (response.statusCode >= 400) {
-      console.log(`❌ [${response.statusCode}] - Body: ${response.body.toString().slice(0, 100)}...`);
+    if (response.status >= 400) {
+      console.log(`❌ [${response.status}] - Body: ${responseBody.toString().slice(0, 100)}...`);
     } else {
-      console.log(`✅ [${response.statusCode}]`);
+      console.log(`✅ [${response.status}]`);
     }
 
-    if (req.path === "/assets/client/tmdb-image-enhancer.js" && response.statusCode === 200) {
-      let body = response.body.toString("utf8");
+    if (req.path === "/assets/client/tmdb-image-enhancer.js" && response.status === 200) {
+      let body = responseBody.toString("utf8");
       const signFnStart = body.indexOf("async function generateRequestSignature");
       const signFnEnd = body.indexOf("export async function buildSecureHeaders", signFnStart);
 
@@ -840,8 +1173,8 @@ app.all(/.*/, async (req, res) => {
       return res.status(200).send(body);
     }
 
-    forwardResponseHeaders(res, response.headers);
-    res.status(response.statusCode).send(response.body);
+    forwardResponseHeaders(res, Object.fromEntries(response.headers.entries()));
+    res.status(response.status).send(responseBody);
   } catch (error) {
     console.error(`🚨 Proxy Error: ${error.message}`);
     if (!res.headersSent) res.status(500).send({ error: error.message });
@@ -853,4 +1186,5 @@ app.listen(PORT, HOST, () => {
   console.log(`🎯 Targeting: ${targetHost}`);
   console.log("📝 Subtitle route enabled at /api/subtitle");
   console.log("🎬 Media route enabled at /__media_proxy__\n");
+  startDiscordAutomation();
 });

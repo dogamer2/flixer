@@ -34,6 +34,19 @@ async function main() {
       name: "generatecode",
       type: 1,
     },
+    {
+      description: "Publish a formatted announcement update",
+      name: "announce",
+      options: [
+        {
+          description: "What changed or what people should know",
+          name: "message",
+          required: true,
+          type: 3,
+        },
+      ],
+      type: 1,
+    },
   ];
 
   const response = await fetch(endpoint, {
