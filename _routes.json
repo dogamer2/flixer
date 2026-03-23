@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "include": [
+    "/api/*",
+    "/__media_proxy__",
+    "/assets/client/*",
+    "/assets/wasm/*"
+  ]
+}
