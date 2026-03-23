@@ -7,6 +7,9 @@ const targetHost = "plsdontscrapemelove.flixer.su";
 const mainSiteHost = "flixer.su";
 const HOST = "0.0.0.0";
 const PORT = 3001;
+const DEFAULT_MINIMAL_USER_AGENT = "Mozilla/5.0";
+const VIDSRC_MEDIA_REFERER = "https://vidsrc.cc/";
+const VIDSRC_MEDIA_ORIGIN = "https://vidsrc.cc";
 const ACCESS_COOKIE_BASE = "flixer_access";
 const ACCESS_SESSION_KIND = "fxs1";
 const DEFAULT_CODE_TTL_SECONDS = 60 * 60 * 24;
@@ -113,6 +116,21 @@ function buildMediaRequestHeaders(req, includeSiteHeaders = true) {
   return headers;
 }
 
+function buildVidsrcMediaRequestHeaders(req) {
+  const headers = {
+    accept: "*/*",
+    "user-agent": DEFAULT_MINIMAL_USER_AGENT,
+    referer: VIDSRC_MEDIA_REFERER,
+    origin: VIDSRC_MEDIA_ORIGIN
+  };
+
+  if (req.headers.range) {
+    headers.range = req.headers.range;
+  }
+
+  return headers;
+}
+
 async function fetchMediaAttempt(upstreamUrl, headers) {
   const response = await gotScraping({
     url: upstreamUrl.toString(),
@@ -138,13 +156,17 @@ async function fetchMediaAttempt(upstreamUrl, headers) {
 
 async function fetchMedia(upstreamUrl, req) {
   const isWorkersDev = upstreamUrl.hostname.endsWith(".workers.dev");
-  const attempts = isWorkersDev ? [true, false] : [true];
+  const attempts = isWorkersDev ? ["vidsrc", true, false] : [true];
   let lastResponse = null;
   let lastError = null;
 
   for (const includeSiteHeaders of attempts) {
     try {
-      const response = await fetchMediaAttempt(upstreamUrl, buildMediaRequestHeaders(req, includeSiteHeaders));
+      const headers =
+        includeSiteHeaders === "vidsrc"
+          ? buildVidsrcMediaRequestHeaders(req)
+          : buildMediaRequestHeaders(req, includeSiteHeaders);
+      const response = await fetchMediaAttempt(upstreamUrl, headers);
       if (response.statusCode < 400) {
         return response;
       }

@@ -9,6 +9,9 @@ const DEFAULT_MEDIA_ACCEPT =
   "application/vnd.apple.mpegurl,application/x-mpegURL,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.7";
 const DEFAULT_BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
+const DEFAULT_MINIMAL_USER_AGENT = "Mozilla/5.0";
+const VIDSRC_MEDIA_REFERER = "https://vidsrc.cc/";
+const VIDSRC_MEDIA_ORIGIN = "https://vidsrc.cc";
 const DEFAULT_SEC_CH_UA = '"Chromium";v="134", "Google Chrome";v="134", "Not:A-Brand";v="24"';
 const DEFAULT_SEC_CH_UA_MOBILE = "?0";
 const DEFAULT_SEC_CH_UA_PLATFORM = '"Windows"';
@@ -156,6 +159,22 @@ function getEmbeddedMediaOrigin(upstreamUrl) {
   return `https://${firstSegment}`;
 }
 
+function buildVidsrcMediaRequestHeaders(request) {
+  const headers = new Headers({
+    accept: "*/*",
+    "user-agent": DEFAULT_MINIMAL_USER_AGENT,
+    referer: VIDSRC_MEDIA_REFERER,
+    origin: VIDSRC_MEDIA_ORIGIN
+  });
+
+  const range = request.headers.get("range");
+  if (range) {
+    headers.set("range", range);
+  }
+
+  return headers;
+}
+
 function buildMediaRequestHeaders(request, options = {}) {
   const {
     accept = DEFAULT_MEDIA_ACCEPT,
@@ -228,6 +247,9 @@ async function fetchMedia(upstreamUrl, request) {
   const embeddedOrigin = getEmbeddedMediaOrigin(upstreamUrl);
   const attempts = isWorkersDev
     ? [
+        {
+          exactVidsrcHeaders: true
+        },
         {
           accept: "*/*",
           includeSiteHeaders: false,
@@ -305,7 +327,10 @@ async function fetchMedia(upstreamUrl, request) {
 
   for (const attempt of attempts) {
     try {
-      const response = await fetchMediaAttempt(upstreamUrl, buildMediaRequestHeaders(request, attempt));
+      const headers = attempt.exactVidsrcHeaders
+        ? buildVidsrcMediaRequestHeaders(request)
+        : buildMediaRequestHeaders(request, attempt);
+      const response = await fetchMediaAttempt(upstreamUrl, headers);
       if (response.status < 400) {
         return response;
       }
