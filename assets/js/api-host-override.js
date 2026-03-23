@@ -19,6 +19,7 @@
   const PROXY_URL = IS_PRODUCTION_HOST ? window.location.origin : DEV_PROXY_URL;
   const SHOULD_FORWARD_HEADERS = !IS_PRODUCTION_HOST;
   const MEDIA_PROXY_PATH = "/__media_proxy__";
+  const HARDCODED_MEDIA_PROXY_ORIGIN = "https://flixer-jw67.onrender.com";
   const MEDIA_PROXY_OVERRIDE_STORAGE_KEY = "flixer_media_proxy_origin";
   const ACCESS_GATE_STYLE_ID = "flixer-access-gate-style";
   const ACCESS_GATE_ROOT_ID = "flixer-access-gate-overlay";
@@ -27,6 +28,12 @@
   const originalFetch = window.fetch;
 
   function getConfiguredMediaProxyOrigin() {
+    try {
+      if (HARDCODED_MEDIA_PROXY_ORIGIN) {
+        return new URL(HARDCODED_MEDIA_PROXY_ORIGIN, window.location.origin).origin;
+      }
+    } catch (_error) {}
+
     try {
       const runtimeOverride =
         typeof window.FLIXER_MEDIA_PROXY_ORIGIN === "string" ? window.FLIXER_MEDIA_PROXY_ORIGIN.trim() : "";
@@ -921,5 +928,5 @@
     attributeFilter: DOM_URL_ATTRS
   });
 
-  console.log(`✅ Proxy Relay v4.1 Active (${IS_PRODUCTION_HOST ? "same-origin production proxy" : "dev proxy"})`);
+  console.log(`✅ Proxy Relay v4.2 Active (${IS_PRODUCTION_HOST ? "same-origin production proxy" : "dev proxy"})`);
 }());

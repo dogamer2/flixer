@@ -1,5 +1,4 @@
 import express from "express";
-import { gotScraping } from "got-scraping";
 import crypto from "crypto";
 
 const app = express();
@@ -132,25 +131,18 @@ function buildVidsrcMediaRequestHeaders(req) {
 }
 
 async function fetchMediaAttempt(upstreamUrl, headers) {
-  const response = await gotScraping({
-    url: upstreamUrl.toString(),
+  const response = await fetch(upstreamUrl, {
     method: "GET",
     headers,
-    http2: true,
-    useHeaderGenerator: true,
-    headerGeneratorOptions: {
-      browsers: [{ name: "chrome", minVersion: 124 }],
-      devices: ["desktop"],
-      operatingSystems: ["windows"]
-    },
-    responseType: "buffer",
-    throwHttpErrors: false
+    redirect: "follow"
   });
 
+  const body = Buffer.from(await response.arrayBuffer());
+
   return {
-    statusCode: response.statusCode,
-    headers: response.headers,
-    body: response.body
+    statusCode: response.status,
+    headers: Object.fromEntries(response.headers.entries()),
+    body
   };
 }
 
@@ -191,24 +183,21 @@ async function fetchSubtitle(url) {
   const upstreamUrl = new URL("https://flixer.su/api/subtitle");
   upstreamUrl.searchParams.set("url", url);
 
-  return gotScraping({
-    url: upstreamUrl.toString(),
+  const response = await fetch(upstreamUrl, {
     method: "GET",
-    http2: true,
-    useHeaderGenerator: true,
-    headerGeneratorOptions: {
-      browsers: [{ name: "chrome", minVersion: 124 }],
-      devices: ["desktop"],
-      operatingSystems: ["windows"]
-    },
     headers: {
       referer: "https://flixer.su/",
       origin: "https://flixer.su",
       accept: "text/vtt,text/plain,application/x-subrip,application/octet-stream;q=0.9,*/*;q=0.8"
     },
-    responseType: "text",
-    throwHttpErrors: false
+    redirect: "follow"
   });
+
+  return {
+    statusCode: response.status,
+    headers: Object.fromEntries(response.headers.entries()),
+    body: await response.text()
+  };
 }
 
 function normalizeSubtitleBody(body) {
