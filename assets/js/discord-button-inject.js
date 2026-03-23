@@ -137,57 +137,21 @@
     candidates.forEach((element) => {
       element.remove();
     });
-  }
 
-  function ensureFallbackButton() {
-    const hasNavButton = document.querySelector("[data-discord-nav-button='true']");
-    const existingFloating = document.querySelector("[data-discord-floating='true']");
+    const globalCandidates = Array.from(
+      searchRoot.querySelectorAll(
+        "a[href='/discord'], a[href$='/discord'], a[href*='discord.gg'], a[href*='discord.com/invite'], [data-discord-floating='true']"
+      )
+    ).filter((element) => !isValidDiscordNavButton(element) && !isPrimaryBackupDiscordCta(element));
 
-    if (isBackupDomainsPage()) {
-      existingFloating?.remove();
-      return;
-    }
-
-    if (hasNavButton) {
-      existingFloating?.remove();
-      return;
-    }
-
-    if (existingFloating || !document.body) {
-      return;
-    }
-
-    const link = document.createElement("a");
-    link.href = DISCORD_INVITE_URL;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.dataset.discordFloating = "true";
-    link.className =
-      "fixed bottom-6 right-6 z-[120] inline-flex items-center gap-2 rounded-full bg-[#5865F2] px-4 py-3 text-sm font-medium text-white shadow-lg shadow-black/40 transition-colors hover:bg-[#4752C4]";
-    link.style.cssText = [
-      "position:fixed",
-      "right:24px",
-      "bottom:24px",
-      "z-index:120",
-      "display:inline-flex",
-      "align-items:center",
-      "gap:8px",
-      "padding:12px 16px",
-      "border-radius:9999px",
-      "background:#5865F2",
-      "color:#fff",
-      "font:600 14px/1.2 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-      "text-decoration:none",
-      "box-shadow:0 12px 32px rgba(0,0,0,0.35)"
-    ].join(";");
-    link.innerHTML = discordIcon("w-4 h-4") + "<span>Discord</span>";
-    document.body.appendChild(link);
+    globalCandidates.forEach((element) => {
+      element.remove();
+    });
   }
 
   function applyDiscordButtons() {
     ensureDiscordNavButtons(document);
     removeStandaloneDiscordButtons(document);
-    ensureFallbackButton();
   }
 
   if (document.readyState === "loading") {

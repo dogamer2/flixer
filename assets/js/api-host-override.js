@@ -738,6 +738,20 @@
         element.remove();
       }
     });
+
+    const globalCandidates = Array.from(
+      searchRoot.querySelectorAll(
+        "a[href='/discord'], a[href$='/discord'], a[href*='discord.gg'], a[href*='discord.com/invite'], [data-discord-floating='true']"
+      )
+    ).filter(function (element) {
+      return !isValidDiscordNavButton(element) && !isPrimaryBackupDiscordCta(element);
+    });
+
+    globalCandidates.forEach(function (element) {
+      if (element && element.remove) {
+        element.remove();
+      }
+    });
   }
 
   // Intercept Fetch
