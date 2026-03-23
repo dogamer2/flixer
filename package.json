@@ -2,6 +2,7 @@
   "name": "flixer-pages-build",
   "private": true,
   "scripts": {
+    "start": "node proxy.mjs",
     "build": "npm run build:pages",
     "build:pages": "node scripts/build-pages-output.mjs",
     "discord:status": "node scripts/sync-discord-status.mjs",
