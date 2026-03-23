@@ -6,6 +6,8 @@
   var mutationTimer = null;
   var lastFocused = null;
   var rowCounter = 0;
+  var queuedFocusScroll = null;
+  var focusRecoveryTimer = null;
 
   function isTvMode() {
     try {
@@ -82,6 +84,59 @@
 
   function focusables() {
     return Array.from(document.querySelectorAll("[data-tv-focusable='1']")).filter(isVisible);
+  }
+
+  function overlayContainers() {
+    return Array.from(document.querySelectorAll(".fixed, [role='dialog'], [aria-modal='true'], .absolute"))
+      .filter(isVisible)
+      .sort(function (a, b) {
+        return b.getBoundingClientRect().width * b.getBoundingClientRect().height -
+          a.getBoundingClientRect().width * a.getBoundingClientRect().height;
+      });
+  }
+
+  function preferredFocusable() {
+    var overlays = overlayContainers();
+    for (var i = 0; i < overlays.length; i += 1) {
+      var candidates = Array.from(overlays[i].querySelectorAll("[data-tv-focusable='1']")).filter(isVisible);
+      if (candidates.length) {
+        var strongMatch = candidates.find(function (el) {
+          var label = ((el.getAttribute("aria-label") || "") + " " + (el.textContent || "")).toLowerCase();
+          return /play|continue|more info|overview|episodes|close|back/.test(label);
+        });
+        return strongMatch || candidates[0];
+      }
+    }
+
+    if (lastFocused && isVisible(lastFocused) && lastFocused.dataset.tvFocusable === "1") {
+      return lastFocused;
+    }
+
+    var items = focusables();
+    return items[0] || null;
+  }
+
+  function recoverFocus() {
+    var active = getFocusableTarget(document.activeElement);
+    if (active && isVisible(active)) return false;
+
+    var target = preferredFocusable();
+    if (!target) return false;
+
+    if (target.dataset.tvCard === "1") {
+      return focusCard(target);
+    }
+
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    return true;
+  }
+
+  function scheduleFocusRecovery(delay) {
+    window.clearTimeout(focusRecoveryTimer);
+    focusRecoveryTimer = window.setTimeout(function () {
+      recoverFocus();
+    }, delay || 0);
   }
 
   function isSelectKey(event) {
@@ -181,6 +236,22 @@
     centerElementVertically(verticalTarget);
   }
 
+  function queueFocusScroll(target, options) {
+    if (!target) return;
+    queuedFocusScroll = {
+      target: target,
+      options: options || {},
+      expiresAt: Date.now() + 450
+    };
+  }
+
+  function focusCard(target, options) {
+    if (!target) return false;
+    queueFocusScroll(target, options);
+    target.focus({ preventScroll: true });
+    return true;
+  }
+
   function revealMoreRow(rowId, direction, fallbackIndex) {
     var row = getRowContainer(rowId);
     if (!canScrollRow(row, direction)) return false;
@@ -198,8 +269,7 @@
       var safeIndex = Math.max(0, Math.min(cards.length - 1, fallbackIndex));
       var target = cards[safeIndex];
       if (target) {
-        target.focus({ preventScroll: true });
-        centerCardInViewport(target, { skipHorizontal: true });
+        focusCard(target, { skipHorizontal: true });
       }
     }, 260);
 
@@ -246,8 +316,7 @@
 
     if (!best) return false;
 
-    best.focus({ preventScroll: true });
-    centerCardInViewport(best);
+    focusCard(best);
     return true;
   }
 
@@ -304,10 +373,7 @@
     }
 
     var target = cards[nextIndex];
-    target.focus({ preventScroll: true });
-    centerCardInViewport(target);
-
-    return true;
+    return focusCard(target);
   }
 
   function moveFocus(direction) {
@@ -321,10 +387,10 @@
 
     var target = nearestFocusable(direction);
     if (!target) return false;
-    target.focus({ preventScroll: true });
     if (target.dataset.tvCard === "1") {
-      centerCardInViewport(target);
+      return focusCard(target);
     } else {
+      target.focus({ preventScroll: true });
       target.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
     }
     return true;
@@ -421,15 +487,15 @@
       markFocusable(el, { card: false });
     });
 
-    var items = focusables();
-    if ((!document.activeElement || document.activeElement === document.body) && items.length) {
-      items[0].focus({ preventScroll: true });
-    }
+    recoverFocus();
   }
 
   function scheduleAssign() {
     window.clearTimeout(mutationTimer);
-    mutationTimer = window.setTimeout(assignFocusables, 60);
+    mutationTimer = window.setTimeout(function () {
+      assignFocusables();
+      scheduleFocusRecovery(30);
+    }, 60);
   }
 
   document.addEventListener("focusin", function (event) {
@@ -439,6 +505,11 @@
 
     window.setTimeout(function () {
       if (target.dataset.tvCard === "1") {
+        if (queuedFocusScroll && queuedFocusScroll.target === target && queuedFocusScroll.expiresAt >= Date.now()) {
+          centerCardInViewport(target, queuedFocusScroll.options);
+          queuedFocusScroll = null;
+          return;
+        }
         centerCardInViewport(target);
         return;
       }
@@ -463,6 +534,7 @@
   document.addEventListener("focusout", function (event) {
     var target = event.target && event.target.closest("[data-tv-focusable='1']");
     if (target) target.classList.remove(ACTIVE_CLASS);
+    scheduleFocusRecovery(80);
   }, true);
 
     document.addEventListener("keydown", function (event) {
@@ -501,9 +573,16 @@
   var observer = new MutationObserver(scheduleAssign);
   observer.observe(document.documentElement, { childList: true, subtree: true });
 
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) {
+      scheduleFocusRecovery(30);
+    }
+  });
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", assignFocusables);
   } else {
     assignFocusables();
+    scheduleFocusRecovery(30);
   }
 })();
