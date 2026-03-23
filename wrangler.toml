@@ -2,9 +2,6 @@ name = "flixer"
 compatibility_date = "2026-03-22"
 pages_build_output_dir = "./dist"
 
-[build]
-command = "npm run build:pages"
-
 
 [[d1_databases]]
 binding = "ACCESS_CODES_DB"
