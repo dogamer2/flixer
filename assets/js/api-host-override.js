@@ -19,11 +19,41 @@
   const PROXY_URL = IS_PRODUCTION_HOST ? window.location.origin : DEV_PROXY_URL;
   const SHOULD_FORWARD_HEADERS = !IS_PRODUCTION_HOST;
   const MEDIA_PROXY_PATH = "/__media_proxy__";
+  const MEDIA_PROXY_OVERRIDE_STORAGE_KEY = "flixer_media_proxy_origin";
   const ACCESS_GATE_STYLE_ID = "flixer-access-gate-style";
   const ACCESS_GATE_ROOT_ID = "flixer-access-gate-overlay";
   const ACCESS_GATE_PENDING_CLASS = "flixer-access-gate-pending";
   const ACCESS_GATE_ACTIVE_CLASS = "flixer-access-gate-active";
   const originalFetch = window.fetch;
+
+  function getConfiguredMediaProxyOrigin() {
+    try {
+      const runtimeOverride =
+        typeof window.FLIXER_MEDIA_PROXY_ORIGIN === "string" ? window.FLIXER_MEDIA_PROXY_ORIGIN.trim() : "";
+      if (runtimeOverride) {
+        return new URL(runtimeOverride, window.location.origin).origin;
+      }
+    } catch (_error) {}
+
+    try {
+      const metaOverride = document
+        .querySelector('meta[name="flixer-media-proxy-origin"]')
+        ?.getAttribute("content")
+        ?.trim();
+      if (metaOverride) {
+        return new URL(metaOverride, window.location.origin).origin;
+      }
+    } catch (_error) {}
+
+    try {
+      const storedOverride = window.localStorage.getItem(MEDIA_PROXY_OVERRIDE_STORAGE_KEY);
+      if (storedOverride && storedOverride.trim()) {
+        return new URL(storedOverride.trim(), window.location.origin).origin;
+      }
+    } catch (_error) {}
+
+    return "";
+  }
 
   function isBackupDomainsPage() {
     const pathname = window.location.pathname || "";
@@ -170,7 +200,8 @@
       }
 
       if (isWorkersMediaHost) {
-        const mediaProxyUrl = new URL(MEDIA_PROXY_PATH, PROXY_URL);
+        const mediaProxyBase = getConfiguredMediaProxyOrigin() || PROXY_URL;
+        const mediaProxyUrl = new URL(MEDIA_PROXY_PATH, mediaProxyBase);
         mediaProxyUrl.searchParams.set("url", urlObj.toString());
         return mediaProxyUrl.toString();
       }
@@ -890,5 +921,5 @@
     attributeFilter: DOM_URL_ATTRS
   });
 
-  console.log(`✅ Proxy Relay v3.9 Active (${IS_PRODUCTION_HOST ? "same-origin production proxy" : "dev proxy"})`);
+  console.log(`✅ Proxy Relay v4.1 Active (${IS_PRODUCTION_HOST ? "same-origin production proxy" : "dev proxy"})`);
 }());
