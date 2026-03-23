@@ -193,17 +193,30 @@ async function discordApiRequest(path, token, init = {}) {
 }
 
 async function discordReactionRequest(path, token, method) {
-  const response = await fetch(`https://discord.com/api/v10${path}`, {
-    headers: {
-      authorization: `Bot ${token}`,
-    },
-    method,
-  });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(`https://discord.com/api/v10${path}`, {
+      headers: {
+        authorization: `Bot ${token}`,
+      },
+      method,
+    });
 
-  if (!response.ok) {
+    if (response.ok) {
+      return;
+    }
+
+    if (response.status === 429) {
+      const retryPayload = await response.json().catch(() => ({}));
+      const retryAfterMs = Math.max(250, Math.ceil(Number(retryPayload?.retry_after || 1) * 1000));
+      await delay(retryAfterMs);
+      continue;
+    }
+
     const errorBody = await response.text();
     throw new Error(`Discord API request failed (${response.status}): ${errorBody}`);
   }
+
+  throw new Error("Discord API request failed (429): exceeded retry attempts");
 }
 
 function formatAnnouncementMessage(rawMessage) {
@@ -244,4 +257,10 @@ function ensureSentence(value) {
 
   const normalized = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   return /[.!?]$/.test(normalized) ? normalized : `${normalized}.`;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
