@@ -1,60 +1,46 @@
-import {
-  buildResponse,
-  fetchMedia,
-  getWorkerHeaders,
-  isHlsManifestCandidate,
-  isLikelyHlsManifest,
-  rewriteManifestBody,
-  textResponse
-} from "./_shared/proxy.js";
-
 export async function onRequest(context) {
-  const { request } = context;
-
-  if (request.method === "OPTIONS") {
-    return textResponse("", 204);
-  }
-
-  const requestUrl = new URL(request.url);
-  const rawTargetUrl = requestUrl.searchParams.get("url") || "";
-
-  if (!rawTargetUrl) {
-    return textResponse("Missing media url", 400);
-  }
-
-  let upstreamUrl;
-  try {
-    upstreamUrl = new URL(rawTargetUrl);
-  } catch {
-    return textResponse("Invalid media url", 400);
-  }
-
-  try {
-    const response = await fetchMedia(upstreamUrl, request);
-    const bodyBuffer = await response.arrayBuffer();
-    const previewText = new TextDecoder().decode(bodyBuffer.slice(0, Math.min(bodyBuffer.byteLength, 2048)));
-
-    if (!response.ok) {
-      return buildResponse(response, bodyBuffer, getWorkerHeaders());
-    }
-
-    if (isLikelyHlsManifest(upstreamUrl, response.headers, previewText)) {
-      const fullText = new TextDecoder().decode(bodyBuffer);
-      const rewrittenBody = rewriteManifestBody(fullText, upstreamUrl, request);
-      return buildResponse(response, rewrittenBody, {
-        "Content-Type": "application/vnd.apple.mpegurl; charset=utf-8",
-        ...getWorkerHeaders()
-      });
-    }
-
-    if (isHlsManifestCandidate(upstreamUrl, response.headers)) {
-      return textResponse("Invalid HLS manifest", 502, getWorkerHeaders());
-    }
-
-    return buildResponse(response, bodyBuffer, getWorkerHeaders());
-  } catch (error) {
-    return textResponse(JSON.stringify({ error: error.message }), 500, {
-      "Content-Type": "application/json; charset=utf-8"
+  if (context.request.method === "OPTIONS") {
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Methods": "GET,HEAD,OPTIONS"
+      }
     });
   }
+
+  const reqUrl = new URL(context.request.url);
+  const target = reqUrl.searchParams.get("url");
+
+  if (!target) {
+    return new Response("Missing url", { status: 400 });
+  }
+
+  const upstream = await fetch(target, {
+    method: "GET",
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122 Safari/537.36",
+      Referer: "https://vidsrc.cc/",
+      Origin: "https://vidsrc.cc",
+      Accept: "*/*",
+      "Accept-Language": "en-US,en;q=0.9"
+    },
+    redirect: "follow",
+    cf: {
+      cacheTtl: 0,
+      cacheEverything: false
+    }
+  });
+
+  const headers = new Headers(upstream.headers);
+
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Headers", "*");
+  headers.set("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers
+  });
 }
