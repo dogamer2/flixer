@@ -11,6 +11,12 @@ const ACCESS_CODE_GROUP_SIZE = 4;
 const ACCESS_CODE_INSERT_ATTEMPTS = 6;
 const LOCAL_ACCESS_CODE_STORE_KEY = "__FLIXER_LOCAL_ACCESS_CODES__";
 const DISCORD_INVITE_URL = "https://discord.gg/v87gDSVK5x";
+const GATE_PUBLIC_PATHS = new Set([
+  "/favicon.ico",
+  "/assets/icons/apple-touch-icon.png",
+  "/assets/icons/favicon.ico",
+  "/assets/images/logo.png",
+]);
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -49,7 +55,8 @@ export function shouldBypassAccessGate(request) {
   return (
     pathname.startsWith("/api/access/") ||
     pathname === "/api/discord/interactions" ||
-    pathname === "/api/discord/interactions/"
+    pathname === "/api/discord/interactions/" ||
+    GATE_PUBLIC_PATHS.has(pathname)
   );
 }
 
@@ -277,6 +284,8 @@ export function renderAccessGatePage(request, options = {}) {
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${escapedTitle}</title>`,
+    '<link rel="icon" href="/favicon.ico" sizes="any">',
+    '<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">',
     "<style>",
     ":root{color-scheme:dark;--bg:#050505;--panel:#111111;--muted:#9f9f9f;--border:rgba(255,255,255,.08);--accent:#e50914;--accent-2:#ff5058;--success:#18c964;}",
     "*{box-sizing:border-box}",
