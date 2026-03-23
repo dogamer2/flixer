@@ -123,6 +123,11 @@ export async function onRequest(context) {
         botToken,
         "PUT",
       );
+      await discordReactionRequest(
+        `/channels/${REACTION_ROLE_CHANNEL_ID}/messages/${message.id}/reactions/${encodeURIComponent("2️⃣")}/@me`,
+        botToken,
+        "PUT",
+      );
     } catch (error) {
       return discordMessageResponse(
         error instanceof Error ? error.message : "Failed to post reaction-role message",

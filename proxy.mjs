@@ -225,11 +225,12 @@ function buildStatusMessage(siteLabel, isActive) {
   ].join("\n");
 }
 
-async function ensureRoleMenuMessage() {
+async function findRoleMenuMessage() {
   const channelId = REACTION_ROLE_CHANNEL_ID;
   const messages = await discordApiRequest(`/channels/${channelId}/messages?limit=50`, {
     method: "GET",
   });
+
   const existing = Array.isArray(messages)
     ? messages.find(
         (message) =>
@@ -240,6 +241,14 @@ async function ensureRoleMenuMessage() {
           message.content.includes(ROLE_MENU_MARKER),
       )
     : null;
+
+  discordRuntimeState.roleMenuMessageId = String(existing?.id || "");
+  return existing || null;
+}
+
+async function ensureRoleMenuMessage() {
+  const channelId = REACTION_ROLE_CHANNEL_ID;
+  const existing = await findRoleMenuMessage();
 
   const content = buildRoleMenuMessage();
   const message = existing
@@ -353,7 +362,15 @@ async function handleReactionRoleEvent(eventType, payload) {
   const emojiName = String(payload?.emoji?.name || "");
   const roleId = getRoleIdForEmoji(emojiName);
 
-  if (!guildId || !userId || !roleId || !discordRuntimeState.roleMenuMessageId) {
+  if (!guildId || !userId || !roleId) {
+    return;
+  }
+
+  if (!discordRuntimeState.roleMenuMessageId) {
+    await findRoleMenuMessage().catch(() => null);
+  }
+
+  if (!discordRuntimeState.roleMenuMessageId) {
     return;
   }
 
@@ -442,6 +459,7 @@ function connectDiscordGateway() {
 
     if (payload?.t === "READY") {
       discordRuntimeState.sessionId = String(payload.d?.session_id || "");
+      await findRoleMenuMessage().catch(() => null);
       await syncDiscordStatusMessage();
       return;
     }
