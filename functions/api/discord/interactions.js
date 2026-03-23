@@ -214,8 +214,6 @@ function formatAnnouncementMessage(rawMessage) {
     `<@&${ANNOUNCEMENT_ROLE_ID}>`,
     "**Announcement**",
     lines.map((line) => `- ${ensureSentence(line)}`).join("\n"),
-    "",
-    `React with 2️⃣ in <#${REACTION_ROLE_CHANNEL_ID}> to get future announcement alerts.`,
   ].join("\n");
 }
 
@@ -223,9 +221,10 @@ function buildReactionRoleMessage() {
   return [
     ROLE_MENU_MARKER,
     "**Stay in the loop**",
-    "React below if you want to be notified when the site status changes.",
+    "React below to choose which updates you want from Flixer.",
     "",
     `1️⃣ <@&${STATUS_ROLE_ID}> for online and offline status alerts`,
+    `2️⃣ <@&${ANNOUNCEMENT_ROLE_ID}> for feature launches, fixes, and announcements`,
     "",
     "Remove your reaction any time to opt out.",
   ].join("\n");

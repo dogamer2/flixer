@@ -28,7 +28,7 @@ const STATUS_MESSAGE_ID = "1485547180570837003";
 const REACTION_ROLE_CHANNEL_ID = "1485575611081687090";
 const STATUS_ROLE_ID = "1485575817718403072";
 const ANNOUNCEMENT_ROLE_ID = "1485576547829022840";
-const ROLE_MENU_REACTIONS = ["1️⃣"];
+const ROLE_MENU_REACTIONS = ["1️⃣", "2️⃣"];
 const STATUS_SYNC_INTERVAL_MS = 60 * 1000;
 const ROLE_MENU_MARKER = "[role-menu-v2]";
 const DISCORD_ALLOWED_USER_ID = "1384867079357861918";
@@ -204,9 +204,10 @@ function buildRoleMenuMessage() {
   return [
     ROLE_MENU_MARKER,
     "**Stay in the loop**",
-    "React below if you want to be notified when the site status changes.",
+    "React below to choose which updates you want from Flixer.",
     "",
     `1️⃣ <@&${STATUS_ROLE_ID}> for online and offline status alerts`,
+    `2️⃣ <@&${ANNOUNCEMENT_ROLE_ID}> for feature launches, fixes, and announcements`,
     "",
     "Remove your reaction any time to opt out.",
   ].join("\n");
@@ -336,6 +337,10 @@ async function setMemberRole(guildId, userId, roleId, shouldAdd) {
 function getRoleIdForEmoji(emojiName) {
   if (emojiName === "1️⃣") {
     return STATUS_ROLE_ID;
+  }
+
+  if (emojiName === "2️⃣") {
+    return ANNOUNCEMENT_ROLE_ID;
   }
 
   return "";
