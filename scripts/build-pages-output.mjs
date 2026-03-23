@@ -18,6 +18,30 @@ const rootFilePatterns = [/\.html$/i, /^workbox-.*\.js$/i];
 const directoryNames = new Set(["assets", "movies"]);
 const ignoredNames = new Set([".DS_Store"]);
 
+function shouldIncludeSource(source) {
+  const relativePath = path.relative(rootDir, source);
+
+  if (!relativePath || relativePath.startsWith("..")) {
+    return true;
+  }
+
+  const normalizedRelativePath = relativePath.split(path.sep).join("/");
+  const baseName = path.basename(source);
+
+  if (ignoredNames.has(baseName)) {
+    return false;
+  }
+
+  if (
+    normalizedRelativePath.startsWith("assets/sitemaps/") &&
+    baseName !== "sitemap.xml"
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function shouldCopyRootFile(name) {
   return rootFileNames.has(name) || rootFilePatterns.some((pattern) => pattern.test(name));
 }
@@ -27,7 +51,7 @@ async function copyEntry(srcPath, destPath) {
     recursive: true,
     force: true,
     filter(source) {
-      return !ignoredNames.has(path.basename(source));
+      return shouldIncludeSource(source);
     },
   });
 }
