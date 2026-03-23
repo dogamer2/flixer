@@ -92,9 +92,12 @@ function forwardResponseHeaders(res, headers) {
 
 function buildMediaRequestHeaders(req, includeSiteHeaders = true) {
   const headers = {
-    accept: req.headers.accept || "*/*",
-    "accept-language": req.headers["accept-language"] || "en-US,en;q=0.9",
-    "user-agent": req.headers["x-forwarded-user-agent"] || req.headers["user-agent"] || "Mozilla/5.0"
+    accept: "*/*",
+    "accept-language": "en-US,en;q=0.9",
+    "accept-encoding": "identity",
+    "user-agent": req.headers["x-forwarded-user-agent"] || req.headers["user-agent"] || "Mozilla/5.0",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-dest": "empty"
   };
 
   if (req.headers.range) {
