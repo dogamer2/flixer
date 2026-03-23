@@ -26,6 +26,33 @@
   const ACCESS_GATE_PENDING_CLASS = "flixer-access-gate-pending";
   const ACCESS_GATE_ACTIVE_CLASS = "flixer-access-gate-active";
   const originalFetch = window.fetch;
+  const DESKTOP_TV_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+  function isTvModeEnabled() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("tv") === "1") return true;
+      return window.localStorage.getItem("flixer_tv_mode") === "1";
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function getForwardedUserAgent() {
+    return isTvModeEnabled() ? DESKTOP_TV_USER_AGENT : navigator.userAgent;
+  }
+
+  if (isTvModeEnabled()) {
+    try {
+      Object.defineProperty(navigator, "userAgent", {
+        configurable: true,
+        get: function () {
+          return DESKTOP_TV_USER_AGENT;
+        }
+      });
+    } catch (_error) {}
+  }
 
   function getConfiguredMediaProxyOrigin() {
     try {
@@ -626,7 +653,7 @@
 
     const headers = new Headers(headersLike || {});
     headers.set("X-Forwarded-Cookie", document.cookie);
-    headers.set("X-Forwarded-User-Agent", navigator.userAgent);
+    headers.set("X-Forwarded-User-Agent", getForwardedUserAgent());
     return headers;
   }
 
@@ -845,7 +872,7 @@
       try {
         this.withCredentials = !!this.__proxyRelayIncludeCredentials;
         this.setRequestHeader("X-Forwarded-Cookie", document.cookie);
-        this.setRequestHeader("X-Forwarded-User-Agent", navigator.userAgent);
+        this.setRequestHeader("X-Forwarded-User-Agent", getForwardedUserAgent());
       } catch (error) {
         console.warn("Proxy Relay failed to apply XHR headers:", error);
       }
