@@ -18,6 +18,20 @@
   const PROXY_URL = IS_PRODUCTION_HOST ? window.location.origin : DEV_PROXY_URL;
   const SHOULD_FORWARD_HEADERS = !IS_PRODUCTION_HOST;
   const MEDIA_PROXY_PATH = "/__media_proxy__";
+  const ACCESS_GATE_STYLE_ID = "flixer-access-gate-style";
+  const ACCESS_GATE_ROOT_ID = "flixer-access-gate-overlay";
+  const ACCESS_GATE_PENDING_CLASS = "flixer-access-gate-pending";
+  const ACCESS_GATE_ACTIVE_CLASS = "flixer-access-gate-active";
+  const originalFetch = window.fetch;
+
+  function isBackupDomainsPage() {
+    const pathname = window.location.pathname || "";
+    return (
+      pathname === "/backup-domains" ||
+      pathname.endsWith("/backup-domains") ||
+      pathname.endsWith("backup-domains.html")
+    );
+  }
 
   function base64ToArrayBuffer(base64) {
     const normalized = String(base64 || "").replace(/-/g, "+").replace(/_/g, "/");
@@ -162,7 +176,378 @@
     return url;
   }
 
+  function isAccessApiUrl(url) {
+    try {
+      return new URL(url, window.location.origin).pathname.startsWith("/api/access/");
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function shouldRunClientAccessGate() {
+    if (typeof document === "undefined") {
+      return false;
+    }
+
+    const pathname = window.location.pathname || "/";
+    return !pathname.startsWith("/api/");
+  }
+
+  function ensureAccessGateStyles() {
+    if (!shouldRunClientAccessGate() || document.getElementById(ACCESS_GATE_STYLE_ID)) {
+      return;
+    }
+
+    const style = document.createElement("style");
+    style.id = ACCESS_GATE_STYLE_ID;
+    style.textContent = [
+      `html.${ACCESS_GATE_PENDING_CLASS} body > :not(#${ACCESS_GATE_ROOT_ID}), html.${ACCESS_GATE_ACTIVE_CLASS} body > :not(#${ACCESS_GATE_ROOT_ID}) {`,
+      "  visibility: hidden !important;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} {`,
+      "  position: fixed;",
+      "  inset: 0;",
+      "  z-index: 2147483647;",
+      "  display: none;",
+      "  align-items: center;",
+      "  justify-content: center;",
+      "  padding: 24px;",
+      "  background: radial-gradient(circle at top, #2a070a 0%, #090909 40%, #030303 100%);",
+      "  color: #ffffff;",
+      "  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;",
+      "}",
+      `html.${ACCESS_GATE_ACTIVE_CLASS} #${ACCESS_GATE_ROOT_ID} {`,
+      "  display: flex;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} .access-shell {`,
+      "  width: min(100%, 460px);",
+      "  background: rgba(10, 10, 10, 0.92);",
+      "  border: 1px solid rgba(255, 255, 255, 0.08);",
+      "  border-radius: 24px;",
+      "  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.03);",
+      "  padding: 32px 28px;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} .access-logo-wrap {`,
+      "  display: flex;",
+      "  justify-content: center;",
+      "  margin-bottom: 18px;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} .access-logo {`,
+      "  width: min(180px, 55vw);",
+      "  height: auto;",
+      "  display: block;",
+      "  filter: drop-shadow(0 12px 30px rgba(229, 9, 20, 0.18));",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} .access-brand {`,
+      "  margin-bottom: 14px;",
+      "  color: rgba(255, 255, 255, 0.74);",
+      "  font-size: 14px;",
+      "  letter-spacing: 0.34em;",
+      "  text-transform: uppercase;",
+      "  text-align: center;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} h1 {`,
+      "  margin: 0;",
+      "  font-size: 34px;",
+      "  line-height: 1.05;",
+      "  font-weight: 800;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} p {`,
+      "  margin: 14px 0 0;",
+      "  color: #9f9f9f;",
+      "  font-size: 15px;",
+      "  line-height: 1.6;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} form {`,
+      "  margin-top: 28px;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} label {`,
+      "  display: block;",
+      "  margin-bottom: 10px;",
+      "  color: rgba(255, 255, 255, 0.58);",
+      "  font-size: 12px;",
+      "  letter-spacing: 0.16em;",
+      "  text-transform: uppercase;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} input {`,
+      "  width: 100%;",
+      "  padding: 15px 16px;",
+      "  border: 1px solid rgba(255, 255, 255, 0.08);",
+      "  border-radius: 14px;",
+      "  background: #080808;",
+      "  color: #ffffff;",
+      "  font-size: 16px;",
+      "  outline: none;",
+      "  transition: border-color 0.2s ease, box-shadow 0.2s ease;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} input:focus {`,
+      "  border-color: rgba(229, 9, 20, 0.8);",
+      "  box-shadow: 0 0 0 4px rgba(229, 9, 20, 0.16);",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} button {`,
+      "  width: 100%;",
+      "  margin-top: 14px;",
+      "  padding: 15px 16px;",
+      "  border: 0;",
+      "  border-radius: 14px;",
+      "  background: linear-gradient(135deg, #e50914, #ff5058);",
+      "  color: #ffffff;",
+      "  font-size: 15px;",
+      "  font-weight: 700;",
+      "  cursor: pointer;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} button:disabled {`,
+      "  opacity: 0.65;",
+      "  cursor: wait;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} .access-secondary-link {`,
+      "  display: flex;",
+      "  align-items: center;",
+      "  justify-content: center;",
+      "  width: 100%;",
+      "  margin-top: 12px;",
+      "  padding: 14px 16px;",
+      "  border: 1px solid rgba(255, 255, 255, 0.1);",
+      "  border-radius: 14px;",
+      "  background: rgba(255, 255, 255, 0.04);",
+      "  color: #ffffff;",
+      "  font-size: 15px;",
+      "  font-weight: 700;",
+      "  text-decoration: none;",
+      "  transition: background 0.2s ease, border-color 0.2s ease;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} .access-secondary-link:hover {`,
+      "  background: rgba(255, 255, 255, 0.08);",
+      "  border-color: rgba(255, 255, 255, 0.16);",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} .access-status {`,
+      "  min-height: 24px;",
+      "  margin-top: 16px;",
+      "  font-size: 14px;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} .access-status.error {`,
+      "  color: #ff9b9b;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} .access-status.success {`,
+      "  color: #18c964;",
+      "}",
+      `#${ACCESS_GATE_ROOT_ID} .access-foot {`,
+      "  margin-top: 24px;",
+      "  color: rgba(255, 255, 255, 0.34);",
+      "  font-size: 12px;",
+      "}",
+      "@media (max-width: 640px) {",
+      `  #${ACCESS_GATE_ROOT_ID} { padding: 16px; }`,
+      `  #${ACCESS_GATE_ROOT_ID} .access-shell { padding: 24px 20px; border-radius: 20px; }`,
+      `  #${ACCESS_GATE_ROOT_ID} h1 { font-size: 28px; }`,
+      "}"
+    ].join("\n");
+    document.head.appendChild(style);
+  }
+
+  function waitForBody(callback) {
+    if (document.body) {
+      callback();
+      return;
+    }
+
+    document.addEventListener("DOMContentLoaded", callback, { once: true });
+  }
+
+  function setAccessGateStatus(root, message, type) {
+    if (!root) {
+      return;
+    }
+
+    const status = root.querySelector("[data-access-status]");
+    if (!status) {
+      return;
+    }
+
+    status.textContent = message || "";
+    status.className = `access-status${type ? ` ${type}` : ""}`;
+  }
+
+  async function requestAccessJson(path, init) {
+    const headers = addForwardHeaders((init && init.headers) || {});
+    const mergedInit = {
+      ...(init || {}),
+      cache: "no-store",
+      credentials: SHOULD_FORWARD_HEADERS ? "include" : "same-origin",
+      headers: headers
+    };
+    if (SHOULD_FORWARD_HEADERS) {
+      mergedInit.mode = "cors";
+    }
+    const rewrittenUrl = rewriteUrl(path);
+    const response = await originalFetch(rewrittenUrl, mergedInit);
+    const payload = await response.json().catch(function () {
+      return {};
+    });
+    return { payload, response };
+  }
+
+  function getAccessGateDefaultDescription() {
+    return "Enter your access code to unlock the site.";
+  }
+
+  function ensureAccessGateOverlay() {
+    if (!document.body) {
+      return null;
+    }
+
+    let root = document.getElementById(ACCESS_GATE_ROOT_ID);
+
+    if (root) {
+      return root;
+    }
+
+    root = document.createElement("div");
+    root.id = ACCESS_GATE_ROOT_ID;
+    root.innerHTML = [
+      '<main class="access-shell" role="dialog" aria-modal="true" aria-labelledby="access-gate-title">',
+      '<div class="access-logo-wrap"><img class="access-logo" src="/assets/images/logo.png" alt="Flixer"></div>',
+      '<div class="access-brand">FLIXER</div>',
+      '<h1 id="access-gate-title" data-access-title>Access Required</h1>',
+      '<p data-access-description>Enter your access code to unlock the site.</p>',
+      '<form data-access-form novalidate>',
+      '<label for="access-gate-code">Access code</label>',
+      '<input id="access-gate-code" name="code" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" placeholder="Paste your code">',
+      '<button type="submit" data-access-submit>Unlock Site</button>',
+      `<a class="access-secondary-link" href="${DISCORD_INVITE_URL}" target="_blank" rel="noreferrer noopener">Join Our Discord</a>`,
+      '<div class="access-status" data-access-status role="status" aria-live="polite"></div>',
+      "</form>",
+      `<div class="access-foot">Requested path: ${window.location.pathname || "/"}</div>`,
+      "</main>"
+    ].join("");
+
+    const form = root.querySelector("[data-access-form]");
+    const input = root.querySelector("#access-gate-code");
+    const submit = root.querySelector("[data-access-submit]");
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+
+      const code = String(input.value || "").trim();
+      if (!code) {
+        setAccessGateStatus(root, "Enter a valid access code.", "error");
+        input.focus();
+        return;
+      }
+
+      submit.disabled = true;
+      setAccessGateStatus(root, "Verifying code...", "");
+
+      try {
+        const result = await requestAccessJson("/api/access/redeem", {
+          body: JSON.stringify({ code: code }),
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json"
+          },
+          method: "POST"
+        });
+
+        if (!result.response.ok) {
+          throw new Error(result.payload.error || "The access code was rejected.");
+        }
+
+        setAccessGateStatus(root, "Access granted. Reloading...", "success");
+        window.location.reload();
+      } catch (error) {
+        setAccessGateStatus(
+          root,
+          error && error.message ? error.message : "The access code was rejected.",
+          "error"
+        );
+      } finally {
+        submit.disabled = false;
+      }
+    });
+
+    document.body.appendChild(root);
+    return root;
+  }
+
+  function releaseAccessGate() {
+    document.documentElement.classList.remove(ACCESS_GATE_PENDING_CLASS);
+    document.documentElement.classList.remove(ACCESS_GATE_ACTIVE_CLASS);
+  }
+
+  function showAccessGate(options) {
+    waitForBody(function () {
+      const root = ensureAccessGateOverlay();
+      if (!root) {
+        return;
+      }
+
+      const title = root.querySelector("[data-access-title]");
+      const description = root.querySelector("[data-access-description]");
+      const input = root.querySelector("#access-gate-code");
+
+      title.textContent = options && options.title ? options.title : "Access Required";
+      description.textContent =
+        options && options.description ? options.description : getAccessGateDefaultDescription();
+
+      document.documentElement.classList.remove(ACCESS_GATE_PENDING_CLASS);
+      document.documentElement.classList.add(ACCESS_GATE_ACTIVE_CLASS);
+      setAccessGateStatus(root, options && options.status ? options.status : "", options && options.statusType ? options.statusType : "");
+      input.focus();
+    });
+  }
+
+  async function initializeClientAccessGate() {
+    if (!shouldRunClientAccessGate()) {
+      return;
+    }
+
+    ensureAccessGateStyles();
+    document.documentElement.classList.add(ACCESS_GATE_PENDING_CLASS);
+
+    try {
+      const result = await requestAccessJson("/api/access/status", {
+        headers: { accept: "application/json" },
+        method: "GET"
+      });
+
+      if (result.response.ok && result.payload && result.payload.authorized) {
+        releaseAccessGate();
+        return;
+      }
+
+      if (!result.response.ok) {
+        showAccessGate({
+          description:
+            result.payload && result.payload.error
+              ? result.payload.error
+              : "The access gate could not verify this browser yet.",
+          status:
+            result.payload && result.payload.error
+              ? result.payload.error
+              : `Access gate request failed (${result.response.status}).`,
+          statusType: "error",
+          title: "Gate Setup Required"
+        });
+        return;
+      }
+
+      showAccessGate({
+        description: getAccessGateDefaultDescription(),
+        title: "Access Required"
+      });
+    } catch (error) {
+      showAccessGate({
+        description:
+          "The local access endpoint is unavailable. Start the proxy on localhost:3001 before loading the site.",
+        status: error && error.message ? error.message : "Failed to reach the access gate.",
+        statusType: "error",
+        title: "Gate Setup Required"
+      });
+    }
+  }
+
   installInsecureSubtleShim();
+  initializeClientAccessGate();
 
   function addForwardHeaders(headersLike) {
     if (!SHOULD_FORWARD_HEADERS) {
@@ -208,36 +593,77 @@
     return link;
   }
 
+  function findDirectBackupLink(container) {
+    if (!container || !container.children) {
+      return null;
+    }
+
+    return (
+      Array.from(container.children).find(function (child) {
+        return (
+          child &&
+          typeof child.matches === "function" &&
+          (child.matches('a[href*="backup-domains"]') ||
+            child.matches('a[aria-label="Backup Domains"]'))
+        );
+      }) || null
+    );
+  }
+
+  function getDirectDiscordNavButtons(container) {
+    if (!container || !container.children) {
+      return [];
+    }
+
+    return Array.from(container.children).filter(function (child) {
+      return !!(child.dataset && child.dataset.discordNavButton === "true");
+    });
+  }
+
+  function isValidDiscordNavButton(element) {
+    return !!(element && element.dataset && element.dataset.discordNavButton === "true" && findDirectBackupLink(element.parentElement));
+  }
+
+  function isPrimaryBackupDiscordCta(element) {
+    return !!(
+      element &&
+      ((element.dataset && element.dataset.discordPrimaryCta === "true") ||
+        (typeof element.closest === "function" &&
+          element.closest("[data-discord-primary-cta='true']")))
+    );
+  }
+
   function ensureDiscordNavButtons(root) {
+    if (isBackupDomainsPage()) {
+      return;
+    }
+
     if (typeof document === "undefined") {
       return;
     }
 
     const searchRoot = root && typeof root.querySelectorAll === "function" ? root : document;
     const containers = Array.from(searchRoot.querySelectorAll("header div.flex.items-center")).filter(function (element) {
-      return (
-        element &&
-        typeof element.querySelector === "function" &&
-        (element.querySelector('a[href*="backup-domains"]') ||
-          element.querySelector('a[aria-label="Backup Domains"]'))
-      );
+      return !!findDirectBackupLink(element);
     });
 
     containers.forEach(function (container) {
-      if (container.querySelector("[data-discord-nav-button='true']")) {
+      const backupLink = findDirectBackupLink(container);
+      const existingButtons = getDirectDiscordNavButtons(container);
+
+      if (!backupLink) {
         return;
       }
 
-      const backupLink =
-        container.querySelector('a[href*="backup-domains"]') ||
-        container.querySelector('a[aria-label="Backup Domains"]');
-      const discordButton = createDiscordNavButton();
-
-      if (backupLink && backupLink.parentNode === container) {
-        container.insertBefore(discordButton, backupLink);
-      } else {
-        container.appendChild(discordButton);
+      if (existingButtons.length > 0) {
+        existingButtons.slice(1).forEach(function (button) {
+          button.remove();
+        });
+        return;
       }
+
+      const discordButton = createDiscordNavButton();
+      container.insertBefore(discordButton, backupLink);
     });
   }
 
@@ -247,12 +673,32 @@
     }
 
     const searchRoot = root && typeof root.querySelectorAll === "function" ? root : document;
+
+    if (isBackupDomainsPage()) {
+      Array.from(
+        searchRoot.querySelectorAll(
+          "[data-discord-nav-button='true'], [data-discord-floating='true'], a[aria-label='Discord'], button[aria-label='Discord'], a[href='/discord'], a[href$='/discord'], a[href*='discord.gg'], a[href*='discord.com/invite']"
+        )
+      ).forEach(function (element) {
+        if (!isPrimaryBackupDiscordCta(element) && element && element.remove) {
+          element.remove();
+        }
+      });
+      return;
+    }
+
+    Array.from(searchRoot.querySelectorAll("[data-discord-nav-button='true']")).forEach(function (element) {
+      if (!isValidDiscordNavButton(element) && element && element.remove) {
+        element.remove();
+      }
+    });
+
     const candidates = Array.from(
       searchRoot.querySelectorAll(
-        'header a[aria-label="Discord"], header button[aria-label="Discord"], header a[href="/discord"], header a[href$="/discord"]'
+        'header a[aria-label="Discord"], header button[aria-label="Discord"], header a[href="/discord"], header a[href$="/discord"], header a[href*="discord.gg"], header a[href*="discord.com/invite"]'
       )
     ).filter(function (element) {
-      return !(element.dataset && element.dataset.discordNavButton === "true");
+      return !isValidDiscordNavButton(element);
     });
 
     candidates.forEach(function (element) {
@@ -263,20 +709,20 @@
   }
 
   // Intercept Fetch
-  const originalFetch = window.fetch;
   window.fetch = function (input, init = {}) {
     let url = (typeof input === "string") ? input : input.url;
     let newUrl = rewriteUrl(url);
 
     if (newUrl !== url) {
+      const includeCredentials = SHOULD_FORWARD_HEADERS && isAccessApiUrl(newUrl);
       if (input instanceof Request) {
         init.headers = addForwardHeaders(init.headers || input.headers);
         input = new Request(newUrl, {
           method: input.method,
           headers: init.headers,
           body: input.body,
-          mode: input.mode,
-          credentials: input.credentials,
+          mode: SHOULD_FORWARD_HEADERS ? "cors" : input.mode,
+          credentials: includeCredentials ? "include" : input.credentials,
           cache: input.cache,
           redirect: input.redirect,
           referrer: input.referrer,
@@ -289,6 +735,10 @@
         input = newUrl;
         if (SHOULD_FORWARD_HEADERS) {
           init.headers = addForwardHeaders(init.headers);
+          init.mode = "cors";
+          if (includeCredentials) {
+            init.credentials = "include";
+          }
         }
       }
     }
@@ -300,6 +750,8 @@
   XMLHttpRequest.prototype.open = function (method, url) {
     const newUrl = rewriteUrl(url);
     this.__proxyRelayHeaders = newUrl !== url;
+    this.__proxyRelayIncludeCredentials =
+      this.__proxyRelayHeaders && SHOULD_FORWARD_HEADERS && isAccessApiUrl(newUrl);
     return originalOpen.call(this, method, newUrl, arguments[2], arguments[3], arguments[4]);
   };
 
@@ -307,6 +759,7 @@
   XMLHttpRequest.prototype.send = function () {
     if (this.__proxyRelayHeaders && SHOULD_FORWARD_HEADERS) {
       try {
+        this.withCredentials = !!this.__proxyRelayIncludeCredentials;
         this.setRequestHeader("X-Forwarded-Cookie", document.cookie);
         this.setRequestHeader("X-Forwarded-User-Agent", navigator.userAgent);
       } catch (error) {

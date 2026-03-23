@@ -1,3 +1,13 @@
 name = "flixer"
 compatibility_date = "2026-03-22"
-pages_build_output_dir = "."
+pages_build_output_dir = "./dist"
+
+[build]
+command = "npm run build:pages"
+
+
+[[d1_databases]]
+binding = "ACCESS_CODES_DB"
+database_name = "flixer-access-codes"
+database_id = "73d7affc-0a80-49de-a8d7-c7827827347c"
+migrations_dir = "./migrations"

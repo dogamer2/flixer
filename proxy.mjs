@@ -7,16 +7,75 @@ const targetHost = "plsdontscrapemelove.flixer.su";
 const mainSiteHost = "flixer.su";
 const HOST = "0.0.0.0";
 const PORT = 3001;
+const ACCESS_COOKIE_BASE = "flixer_access";
+const ACCESS_SESSION_KIND = "fxs1";
+const DEFAULT_CODE_TTL_SECONDS = 60 * 60 * 24;
+const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const DEFAULT_DEV_SECRET = "local-dev-only-access-secret-change-me-now";
+const CODE_ISSUER = "discord-gate";
+const ACCESS_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const ACCESS_CODE_GROUP_COUNT = 4;
+const ACCESS_CODE_GROUP_SIZE = 4;
+const ACCESS_CODE_INSERT_ATTEMPTS = 6;
+const localAccessCodeStore = new Map();
 
 app.use(express.raw({ type: "*/*", limit: "25mb" }));
 
 app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  applyCorsHeaders(req, res);
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    req.headers["access-control-request-headers"] || "Content-Type, X-Forwarded-Cookie, X-Forwarded-User-Agent"
+  );
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
+
+function applyCorsHeaders(req, res) {
+  const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+
+  if (origin && isAllowedDevOrigin(origin)) {
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin, Access-Control-Request-Headers");
+    return;
+  }
+
+  res.setHeader("Access-Control-Allow-Origin", "*");
+}
+
+function isAllowedDevOrigin(origin) {
+  try {
+    const parsed = new URL(origin);
+    return (
+      parsed.protocol === "http:" ||
+      parsed.protocol === "https:"
+    ) && isLocalHostname(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isLocalHostname(hostname) {
+  if (!hostname) {
+    return false;
+  }
+
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return true;
+  }
+
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)) {
+    return false;
+  }
+
+  return (
+    hostname.startsWith("10.") ||
+    hostname.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  );
+}
 
 function forwardResponseHeaders(res, headers) {
   Object.keys(headers || {}).forEach((key) => {
@@ -130,6 +189,317 @@ function signTmdbRequest(key, timestamp, nonce, path) {
   return crypto.createHmac("sha256", Buffer.from(String(key), "utf8")).update(`${key}:${timestamp}:${nonce}:${path}`).digest("base64");
 }
 
+function getAccessSecret(req) {
+  const configured = String(process.env.ACCESS_GATE_SECRET || "").trim();
+
+  if (configured.length >= 32) {
+    return configured;
+  }
+
+  if (isLocalHostname(req.hostname || "")) {
+    return DEFAULT_DEV_SECRET;
+  }
+
+  throw new Error("Missing ACCESS_GATE_SECRET");
+}
+
+function getSessionTtlSeconds() {
+  return clampPositiveInteger(process.env.ACCESS_SESSION_TTL_SECONDS, DEFAULT_SESSION_TTL_SECONDS);
+}
+
+function getCodeTtlSeconds() {
+  return clampPositiveInteger(process.env.ACCESS_CODE_TTL_SECONDS, DEFAULT_CODE_TTL_SECONDS);
+}
+
+function clampPositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function unixTimestamp() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function base64UrlEncode(value) {
+  return Buffer.from(value)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value) {
+  const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4 || 4)) % 4);
+  return Buffer.from(padded, "base64");
+}
+
+function randomToken(byteLength) {
+  return base64UrlEncode(crypto.randomBytes(byteLength));
+}
+
+function generateAccessCode() {
+  const totalLength = ACCESS_CODE_GROUP_COUNT * ACCESS_CODE_GROUP_SIZE;
+  const bytes = crypto.randomBytes(totalLength);
+  const characters = Array.from(bytes, (byte) => ACCESS_CODE_ALPHABET[byte % ACCESS_CODE_ALPHABET.length]);
+  const groups = [];
+
+  for (let index = 0; index < ACCESS_CODE_GROUP_COUNT; index += 1) {
+    const start = index * ACCESS_CODE_GROUP_SIZE;
+    groups.push(characters.slice(start, start + ACCESS_CODE_GROUP_SIZE).join(""));
+  }
+
+  return groups.join("-");
+}
+
+function signAccessValue(secret, value) {
+  return base64UrlEncode(crypto.createHmac("sha256", secret).update(String(value), "utf8").digest());
+}
+
+function timingSafeMatch(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""), "utf8");
+  const rightBuffer = Buffer.from(String(right || ""), "utf8");
+
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function hashUserAgent(userAgent) {
+  return base64UrlEncode(
+    crypto.createHash("sha256").update(String(userAgent || ""), "utf8").digest()
+  ).slice(0, 24);
+}
+
+function normalizeAccessCode(value) {
+  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function hashAccessCodeForStorage(req, normalizedCode) {
+  return signAccessValue(getAccessSecret(req), `access-code:${normalizedCode}`);
+}
+
+function cleanupLocalAccessCodeStore() {
+  const now = unixTimestamp();
+
+  for (const [codeHash, record] of localAccessCodeStore.entries()) {
+    if (!record || !Number.isFinite(record.expiresAt) || record.expiresAt <= now) {
+      localAccessCodeStore.delete(codeHash);
+    }
+  }
+}
+
+function createLocalAccessCode(req) {
+  cleanupLocalAccessCodeStore();
+  const expiresAt = unixTimestamp() + getCodeTtlSeconds();
+
+  for (let attempt = 0; attempt < ACCESS_CODE_INSERT_ATTEMPTS; attempt += 1) {
+    const code = generateAccessCode();
+    const normalizedCode = normalizeAccessCode(code);
+    const codeHash = hashAccessCodeForStorage(req, normalizedCode);
+
+    if (localAccessCodeStore.has(codeHash)) {
+      continue;
+    }
+
+    localAccessCodeStore.set(codeHash, {
+      codeId: randomToken(18),
+      expiresAt
+    });
+
+    return {
+      code,
+      expiresAt
+    };
+  }
+
+  throw new Error("Failed to generate unique access code");
+}
+
+function getPrimaryAccessCookieName(req) {
+  return isSecureRequest(req) ? `__Host-${ACCESS_COOKIE_BASE}` : ACCESS_COOKIE_BASE;
+}
+
+function getAccessCookieNameCandidates(req) {
+  return Array.from(
+    new Set([`__Host-${ACCESS_COOKIE_BASE}`, ACCESS_COOKIE_BASE, getPrimaryAccessCookieName(req)])
+  );
+}
+
+function isSecureRequest(req) {
+  return req.protocol === "https" || req.headers["x-forwarded-proto"] === "https";
+}
+
+function parseCookies(cookieHeader) {
+  const cookies = {};
+
+  for (const part of String(cookieHeader || "").split(";")) {
+    const trimmed = part.trim();
+
+    if (!trimmed) {
+      continue;
+    }
+
+    const separatorIndex = trimmed.indexOf("=");
+    const name = separatorIndex === -1 ? trimmed : trimmed.slice(0, separatorIndex);
+    const rawValue = separatorIndex === -1 ? "" : trimmed.slice(separatorIndex + 1);
+
+    try {
+      cookies[name] = decodeURIComponent(rawValue);
+    } catch {
+      cookies[name] = rawValue;
+    }
+  }
+
+  return cookies;
+}
+
+function getRequestCookies(req) {
+  return {
+    ...parseCookies(req.headers["x-forwarded-cookie"]),
+    ...parseCookies(req.headers.cookie)
+  };
+}
+
+function buildAccessCookieHeader(req, cookieName, value, maxAgeSeconds) {
+  const segments = [
+    `${cookieName}=${encodeURIComponent(String(value || ""))}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Strict",
+    `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds || 0))}`,
+    "Priority=High"
+  ];
+
+  if (isSecureRequest(req)) {
+    segments.push("Secure");
+  }
+
+  return segments.join("; ");
+}
+
+function appendClearAccessCookies(res, req) {
+  for (const cookieName of getAccessCookieNameCandidates(req)) {
+    res.append("Set-Cookie", buildAccessCookieHeader(req, cookieName, "", 0));
+  }
+}
+
+function appendAccessSessionCookie(res, req, token, maxAgeSeconds) {
+  res.append(
+    "Set-Cookie",
+    buildAccessCookieHeader(req, getPrimaryAccessCookieName(req), token, maxAgeSeconds)
+  );
+}
+
+function createSignedAccessToken(secret, kind, payload) {
+  const serializedPayload = base64UrlEncode(Buffer.from(JSON.stringify(payload), "utf8"));
+  const signature = signAccessValue(secret, `${kind}.${serializedPayload}`);
+  return `${kind}.${serializedPayload}.${signature}`;
+}
+
+function verifySignedAccessToken(secret, token, expectedKind) {
+  const parts = String(token || "").split(".");
+
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  const [kind, serializedPayload, providedSignature] = parts;
+
+  if (kind !== expectedKind || !serializedPayload || !providedSignature) {
+    return null;
+  }
+
+  const expectedSignature = signAccessValue(secret, `${kind}.${serializedPayload}`);
+
+  if (!timingSafeMatch(providedSignature, expectedSignature)) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(base64UrlDecode(serializedPayload).toString("utf8"));
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+
+    if (!Number.isFinite(payload.exp) || payload.exp <= unixTimestamp()) {
+      return null;
+    }
+
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function validateAccessSession(req) {
+  const secret = getAccessSecret(req);
+  const cookies = getRequestCookies(req);
+  const cookieName = getAccessCookieNameCandidates(req).find((name) => !!cookies[name]);
+  const token = cookieName ? cookies[cookieName] : "";
+
+  if (!token) {
+    return {
+      authorized: false,
+      shouldClear: false
+    };
+  }
+
+  const payload = verifySignedAccessToken(secret, token, ACCESS_SESSION_KIND);
+  if (!payload) {
+    return {
+      authorized: false,
+      shouldClear: true
+    };
+  }
+
+  const expectedUserAgentHash = hashUserAgent(
+    req.headers["x-forwarded-user-agent"] || req.headers["user-agent"]
+  );
+
+  if (!payload.uah || payload.uah !== expectedUserAgentHash) {
+    return {
+      authorized: false,
+      shouldClear: true
+    };
+  }
+
+  return {
+    authorized: true,
+    payload,
+    shouldClear: false
+  };
+}
+
+function redeemAccessCode(req, rawCode) {
+  cleanupLocalAccessCodeStore();
+  const codeHash = hashAccessCodeForStorage(req, normalizeAccessCode(rawCode));
+  const storedCode = localAccessCodeStore.get(codeHash);
+
+  if (!storedCode || storedCode.expiresAt <= unixTimestamp()) {
+    localAccessCodeStore.delete(codeHash);
+    return null;
+  }
+
+  localAccessCodeStore.delete(codeHash);
+
+  const sessionPayload = {
+    exp: unixTimestamp() + getSessionTtlSeconds(),
+    iat: unixTimestamp(),
+    iss: CODE_ISSUER,
+    jti: randomToken(18),
+    src: storedCode.codeId || codeHash,
+    uah: hashUserAgent(req.headers["x-forwarded-user-agent"] || req.headers["user-agent"])
+  };
+
+  return {
+    expiresAt: sessionPayload.exp,
+    sessionToken: createSignedAccessToken(secret, ACCESS_SESSION_KIND, sessionPayload)
+  };
+}
+
 function isHlsManifestCandidate(url, headers) {
   const contentType = String(headers?.["content-type"] || "").toLowerCase();
   return url.pathname.endsWith(".m3u8") || contentType.includes("mpegurl") || contentType.includes("application/x-mpegurl");
@@ -183,6 +553,98 @@ function rewriteManifestBody(body, sourceUrl, req) {
     .map((line) => rewriteManifestLine(line, sourceUrl, req))
     .join("\n");
 }
+
+function parseJsonBody(body) {
+  if (!body || body.length === 0) {
+    return {};
+  }
+
+  if (Buffer.isBuffer(body)) {
+    return JSON.parse(body.toString("utf8"));
+  }
+
+  if (typeof body === "string") {
+    return JSON.parse(body);
+  }
+
+  return JSON.parse(String(body));
+}
+
+app.get("/api/access/dev-generate", (req, res) => {
+  if (!isLocalHostname(req.hostname || "")) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  res.setHeader("Cache-Control", "no-store");
+
+  try {
+    return res.status(200).json(createLocalAccessCode(req));
+  } catch (error) {
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : "Failed to generate local access code"
+    });
+  }
+});
+
+app.get("/api/access/status", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+
+  try {
+    const sessionState = validateAccessSession(req);
+
+    if (!sessionState.authorized && sessionState.shouldClear) {
+      appendClearAccessCookies(res, req);
+    }
+
+    return res.status(200).json({ authorized: !!sessionState.authorized });
+  } catch (error) {
+    return res.status(503).json({
+      error: error instanceof Error ? error.message : "Access gate misconfigured"
+    });
+  }
+});
+
+app.post("/api/access/redeem", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+
+  let body;
+  try {
+    body = parseJsonBody(req.body);
+  } catch {
+    return res.status(400).json({ error: "Invalid JSON body" });
+  }
+
+  const code = String(body?.code || "").trim();
+  if (!code) {
+    return res.status(400).json({ error: "Access code is required" });
+  }
+
+  try {
+    const redeemedSession = redeemAccessCode(req, code);
+
+    if (!redeemedSession) {
+      return res.status(401).json({ error: "Invalid or expired access code" });
+    }
+
+    const maxAgeSeconds = Math.max(0, redeemedSession.expiresAt - unixTimestamp());
+    appendAccessSessionCookie(res, req, redeemedSession.sessionToken, maxAgeSeconds);
+
+    return res.status(200).json({
+      expiresAt: redeemedSession.expiresAt,
+      ok: true
+    });
+  } catch (error) {
+    return res.status(503).json({
+      error: error instanceof Error ? error.message : "Failed to verify access code"
+    });
+  }
+});
+
+app.post("/api/access/logout", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  appendClearAccessCookies(res, req);
+  return res.status(200).json({ ok: true });
+});
 
 app.all(/.*/, async (req, res) => {
   if (req.path === "/__media_proxy__") {

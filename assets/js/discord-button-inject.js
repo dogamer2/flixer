@@ -1,6 +1,15 @@
 (() => {
   const DISCORD_INVITE_URL = "https://discord.gg/v87gDSVK5x";
 
+  function isBackupDomainsPage() {
+    const pathname = window.location.pathname || "";
+    return (
+      pathname === "/backup-domains" ||
+      pathname.endsWith("/backup-domains") ||
+      pathname.endsWith("backup-domains.html")
+    );
+  }
+
   function discordIcon(className) {
     return (
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="' +
@@ -22,42 +31,108 @@
     return link;
   }
 
+  function findDirectBackupLink(container) {
+    if (!container || !container.children) {
+      return null;
+    }
+
+    return (
+      Array.from(container.children).find((child) => {
+        return (
+          child &&
+          typeof child.matches === "function" &&
+          (child.matches('a[href*="backup-domains"]') ||
+            child.matches('a[aria-label="Backup Domains"]'))
+        );
+      }) || null
+    );
+  }
+
+  function getDirectDiscordNavButtons(container) {
+    if (!container || !container.children) {
+      return [];
+    }
+
+    return Array.from(container.children).filter(
+      (child) => child.dataset && child.dataset.discordNavButton === "true"
+    );
+  }
+
+  function isValidDiscordNavButton(element) {
+    return !!(
+      element &&
+      element.dataset &&
+      element.dataset.discordNavButton === "true" &&
+      findDirectBackupLink(element.parentElement)
+    );
+  }
+
+  function isPrimaryBackupDiscordCta(element) {
+    return !!(
+      element &&
+      ((element.dataset && element.dataset.discordPrimaryCta === "true") ||
+        (typeof element.closest === "function" &&
+          element.closest("[data-discord-primary-cta='true']")))
+    );
+  }
+
   function ensureDiscordNavButtons(root) {
+    if (isBackupDomainsPage()) {
+      return;
+    }
+
     const searchRoot = root && typeof root.querySelectorAll === "function" ? root : document;
     const containers = Array.from(searchRoot.querySelectorAll("header div.flex.items-center")).filter((element) => {
-      return (
-        element &&
-        typeof element.querySelector === "function" &&
-        (element.querySelector('a[href*="backup-domains"]') ||
-          element.querySelector('a[aria-label="Backup Domains"]'))
-      );
+      return !!findDirectBackupLink(element);
     });
 
     containers.forEach((container) => {
-      if (container.querySelector("[data-discord-nav-button='true']")) {
+      const backupLink = findDirectBackupLink(container);
+      const existingButtons = getDirectDiscordNavButtons(container);
+
+      if (!backupLink) {
         return;
       }
 
-      const backupLink =
-        container.querySelector('a[href*="backup-domains"]') ||
-        container.querySelector('a[aria-label="Backup Domains"]');
-      const discordButton = createDiscordNavButton();
-
-      if (backupLink && backupLink.parentNode === container) {
-        container.insertBefore(discordButton, backupLink);
-      } else {
-        container.appendChild(discordButton);
+      if (existingButtons.length > 0) {
+        existingButtons.slice(1).forEach((button) => {
+          button.remove();
+        });
+        return;
       }
+
+      const discordButton = createDiscordNavButton();
+      container.insertBefore(discordButton, backupLink);
     });
   }
 
   function removeStandaloneDiscordButtons(root) {
     const searchRoot = root && typeof root.querySelectorAll === "function" ? root : document;
+
+    if (isBackupDomainsPage()) {
+      Array.from(
+        searchRoot.querySelectorAll(
+          "[data-discord-nav-button='true'], [data-discord-floating='true'], a[aria-label='Discord'], button[aria-label='Discord'], a[href='/discord'], a[href$='/discord'], a[href*='discord.gg'], a[href*='discord.com/invite']"
+        )
+      ).forEach((element) => {
+        if (!isPrimaryBackupDiscordCta(element)) {
+          element.remove();
+        }
+      });
+      return;
+    }
+
+    Array.from(searchRoot.querySelectorAll("[data-discord-nav-button='true']")).forEach((element) => {
+      if (!isValidDiscordNavButton(element)) {
+        element.remove();
+      }
+    });
+
     const candidates = Array.from(
       searchRoot.querySelectorAll(
-        'header a[aria-label="Discord"], header button[aria-label="Discord"], header a[href="/discord"], header a[href$="/discord"]'
+        'header a[aria-label="Discord"], header button[aria-label="Discord"], header a[href="/discord"], header a[href$="/discord"], header a[href*="discord.gg"], header a[href*="discord.com/invite"]'
       )
-    ).filter((element) => !(element.dataset && element.dataset.discordNavButton === "true"));
+    ).filter((element) => !isValidDiscordNavButton(element));
 
     candidates.forEach((element) => {
       element.remove();
@@ -67,6 +142,11 @@
   function ensureFallbackButton() {
     const hasNavButton = document.querySelector("[data-discord-nav-button='true']");
     const existingFloating = document.querySelector("[data-discord-floating='true']");
+
+    if (isBackupDomainsPage()) {
+      existingFloating?.remove();
+      return;
+    }
 
     if (hasNavButton) {
       existingFloating?.remove();

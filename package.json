@@ -1,0 +1,15 @@
+{
+  "name": "flixer-pages-build",
+  "private": true,
+  "scripts": {
+    "build:pages": "node scripts/build-pages-output.mjs",
+    "generate:local-code": "node scripts/generate-local-code.mjs",
+    "serve:static": "python3 serve.py",
+    "proxy": "node proxy.mjs",
+    "register:discord-command": "node scripts/register-discord-command.mjs"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "got-scraping": "^4.2.1"
+  }
+}
