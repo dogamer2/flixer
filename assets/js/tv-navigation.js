@@ -84,6 +84,25 @@
     return Array.from(document.querySelectorAll("[data-tv-focusable='1']")).filter(isVisible);
   }
 
+  function isSelectKey(event) {
+    var key = event.key;
+    var code = event.code;
+    var keyCode = Number(event.keyCode || event.which || 0);
+    return key === "Enter" ||
+      key === " " ||
+      key === "Spacebar" ||
+      key === "Center" ||
+      key === "Select" ||
+      key === "OK" ||
+      key === "DPadCenter" ||
+      code === "Enter" ||
+      code === "NumpadEnter" ||
+      keyCode === 13 ||
+      keyCode === 23 ||
+      keyCode === 66 ||
+      keyCode === 160;
+  }
+
   function getFocusableTarget(el) {
     return el && el.closest("[data-tv-focusable='1']");
   }
@@ -128,6 +147,25 @@
     return row.scrollLeft > 8;
   }
 
+  function scrollRowToCard(row, card) {
+    if (!row || !card) return;
+    var rowRect = row.getBoundingClientRect();
+    var cardRect = card.getBoundingClientRect();
+    var maxScroll = Math.max(0, row.scrollWidth - row.clientWidth);
+    var desired = row.scrollLeft + (cardRect.left - rowRect.left) - (rowRect.width - cardRect.width) / 2;
+    desired = Math.max(0, Math.min(maxScroll, desired));
+    row.scrollTo({ left: desired, behavior: "smooth" });
+  }
+
+  function centerCardInViewport(card) {
+    if (!card) return;
+    var row = card.dataset.tvRowId ? getRowContainer(card.dataset.tvRowId) : null;
+    if (row) {
+      scrollRowToCard(row, card);
+    }
+    card.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+  }
+
   function revealMoreRow(rowId, direction, fallbackIndex) {
     var row = getRowContainer(rowId);
     if (!canScrollRow(row, direction)) return false;
@@ -146,9 +184,9 @@
       var target = cards[safeIndex];
       if (target) {
         target.focus({ preventScroll: true });
-        target.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+        centerCardInViewport(target);
       }
-    }, 220);
+    }, 260);
 
     return true;
   }
@@ -194,7 +232,7 @@
     if (!best) return false;
 
     best.focus({ preventScroll: true });
-    best.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    centerCardInViewport(best);
     return true;
   }
 
@@ -252,12 +290,12 @@
 
     var target = cards[nextIndex];
     target.focus({ preventScroll: true });
-    target.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    centerCardInViewport(target);
 
     var row = getRowContainer(rowId);
     if (row) {
       window.setTimeout(function () {
-        target.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+        scrollRowToCard(row, target);
       }, 40);
     }
 
@@ -276,7 +314,11 @@
     var target = nearestFocusable(direction);
     if (!target) return false;
     target.focus({ preventScroll: true });
-    target.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    if (target.dataset.tvCard === "1") {
+      centerCardInViewport(target);
+    } else {
+      target.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+    }
     return true;
   }
 
@@ -288,9 +330,37 @@
     return null;
   }
 
+  function getReactProps(node) {
+    if (!node) return null;
+    var keys = Object.keys(node);
+    for (var i = 0; i < keys.length; i += 1) {
+      if (keys[i].indexOf("__reactProps$") === 0) {
+        return node[keys[i]];
+      }
+    }
+    return null;
+  }
+
+  function invokeReactHandler(target, handlerName) {
+    var props = getReactProps(target);
+    if (!props || typeof props[handlerName] !== "function") return false;
+
+    props[handlerName]({
+      currentTarget: target,
+      target: target,
+      preventDefault: function () {},
+      stopPropagation: function () {},
+      nativeEvent: {}
+    });
+    return true;
+  }
+
   function openFocusedCardDetails(target) {
     if (!target || target.dataset.tvCard !== "1") return false;
 
+    invokeReactHandler(target, "onMouseEnter");
+    invokeReactHandler(target, "onMouseMove");
+    target.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window }));
     target.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true, cancelable: true, view: window }));
     target.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, cancelable: true, view: window }));
 
@@ -398,7 +468,7 @@
       return;
     }
 
-    if ((key === "Enter" || key === " ") && active && active.dataset.tvFocusable === "1") {
+    if (isSelectKey(event) && active && active.dataset.tvFocusable === "1") {
       event.preventDefault();
       if (!openFocusedCardDetails(active) && typeof active.click === "function") {
         active.click();
