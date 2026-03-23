@@ -111,16 +111,25 @@ function buildMediaRequestHeaders(req, includeSiteHeaders = true) {
 }
 
 async function fetchMediaAttempt(upstreamUrl, headers) {
-  const response = await fetch(upstreamUrl.toString(), {
+  const response = await gotScraping({
+    url: upstreamUrl.toString(),
     method: "GET",
     headers,
-    redirect: "follow"
+    http2: true,
+    useHeaderGenerator: true,
+    headerGeneratorOptions: {
+      browsers: [{ name: "chrome", minVersion: 124 }],
+      devices: ["desktop"],
+      operatingSystems: ["windows"]
+    },
+    responseType: "buffer",
+    throwHttpErrors: false
   });
 
   return {
-    statusCode: response.status,
-    headers: Object.fromEntries(response.headers.entries()),
-    body: Buffer.from(await response.arrayBuffer())
+    statusCode: response.statusCode,
+    headers: response.headers,
+    body: response.body
   };
 }
 
