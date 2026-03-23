@@ -679,11 +679,23 @@ app.all(/.*/, async (req, res) => {
     try {
       const response = await fetchMedia(upstreamUrl, req);
 
-      if (response.statusCode >= 400) {
-        console.log(`❌ [MEDIA ${response.statusCode}] - Body: ${response.body.toString().slice(0, 100)}...`);
-      } else {
-        console.log(`✅ [MEDIA ${response.statusCode}]`);
-      }
+    if (response.statusCode >= 400) {
+  console.log(`❌ [MEDIA ${response.statusCode}] - Body: ${response.body.toString().slice(0, 100)}...`);
+
+  if (response.statusCode === 403) {
+    res.setHeader("x-media-blocked", "true");
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(403).send(response.body);
+  }
+
+  if (response.statusCode === 404) {
+    res.setHeader("x-media-missing", "true");
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(404).send(response.body);
+  }
+} else {
+  console.log(`✅ [MEDIA ${response.statusCode}]`);
+}
 
       if (isLikelyHlsManifest(upstreamUrl, response.headers, response.body)) {
         const manifestBody = rewriteManifestBody(response.body, upstreamUrl, req);
