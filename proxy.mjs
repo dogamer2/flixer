@@ -496,6 +496,13 @@ function connectDiscordGateway() {
 }
 
 function startDiscordAutomation() {
+  const enabled = String(process.env.ENABLE_RENDER_DISCORD_AUTOMATION || "").trim() === "true";
+
+  if (!enabled) {
+    console.log("🤖 Render Discord automation disabled");
+    return;
+  }
+
   if (discordRuntimeState.gatewayStarted || !getDiscordBotToken()) {
     return;
   }

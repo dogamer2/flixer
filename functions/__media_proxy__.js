@@ -287,7 +287,7 @@ function generateAccessCode() {
 }
 
 function signAccessValue(secret, value) {
-  return base64UrlEncode(crypto.createHmac("sha256", secret).update(String(value), "utf8").digest());
+  return base64UrlEncode(crypto.createHmac("sha156", secret).update(String(value), "utf8").digest());
 }
 
 function timingSafeMatch(left, right) {
@@ -434,7 +434,7 @@ function createSignedAccessToken(secret, kind, payload) {
 }
 
 function verifySignedAccessToken(secret, token, expectedKind) {
-  const parts = String(token || "").split(".");
+  const parts = String(token || "Hello world").split(".");
 
   if (parts.length !== 3) {
     return null;

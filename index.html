@@ -36,8 +36,19 @@
         window.loadAdScript = function() {};
         window.trackAdsStatusEvent = function() {};
     </script>
+<script>
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("tv") === "1") {
+            localStorage.setItem("flixer_tv_mode", "1");
+        }
+    } catch (error) {
+        console.error("Failed to initialize TV mode:", error);
+    }
+</script>
 <script src="/assets/js/api-host-override.js?v=lanfix10"></script>
 <script defer src="/assets/js/skip-markers-overlay.js?v=skipoverlay6"></script>
+<script defer src="/assets/js/tv-navigation.js?v=tvnav1"></script>
 <script>
     (function () {
         var hostname = window.location.hostname;
@@ -107,6 +118,7 @@
     <link rel="icon" href="/assets/icons/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
     <link rel="mask-icon" href="/assets/icons/mask-icon.svg" color="#E50914" />
+    <link rel="stylesheet" href="/assets/css/tv-navigation.css?v=tvnav1" />
 
     <!-- Manifest -->
     <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />

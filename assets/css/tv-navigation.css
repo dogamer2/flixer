@@ -1,0 +1,57 @@
+.tv-mode [data-tv-focusable="1"] {
+  outline: none;
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    box-shadow 220ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    outline-color 180ms ease,
+    opacity 180ms ease;
+}
+
+.tv-mode [data-tv-focusable="1"].tv-focused {
+  outline: 4px solid #fff !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.85), 0 18px 40px rgba(0, 0, 0, 0.55) !important;
+}
+
+.tv-mode button[data-tv-focusable="1"],
+.tv-mode a[data-tv-focusable="1"],
+.tv-mode [role="button"][data-tv-focusable="1"] {
+  border-radius: 8px;
+}
+
+.tv-mode button[data-tv-focusable="1"].tv-focused,
+.tv-mode a[data-tv-focusable="1"].tv-focused,
+.tv-mode [role="button"][data-tv-focusable="1"].tv-focused {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.tv-mode .tv-card {
+  border-radius: 8px;
+  transform-origin: center center;
+}
+
+.tv-mode .tv-card.tv-focused {
+  transform: scale(1.08) translateZ(0) !important;
+  z-index: 60 !important;
+  filter: brightness(1.08);
+}
+
+.tv-mode input[data-tv-focusable="1"].tv-focused,
+.tv-mode textarea[data-tv-focusable="1"].tv-focused {
+  outline: 3px solid #fff !important;
+  border-color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.tv-mode [data-row-id] {
+  scroll-behavior: smooth;
+}
+
+.tv-mode img,
+.tv-mode button,
+.tv-mode a {
+  backface-visibility: hidden;
+}

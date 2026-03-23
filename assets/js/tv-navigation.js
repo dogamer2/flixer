@@ -1,0 +1,380 @@
+(function () {
+  var TV_MODE_KEY = "flixer_tv_mode";
+  var ACTIVE_CLASS = "tv-focused";
+  var CARD_CLASS = "tv-card";
+  var ROW_SELECTOR = "[data-row-id]";
+  var mutationTimer = null;
+  var lastFocused = null;
+  var rowCounter = 0;
+
+  function isTvMode() {
+    try {
+      if (localStorage.getItem(TV_MODE_KEY) === "1") return true;
+    } catch (error) {}
+
+    try {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get("tv") === "1") return true;
+    } catch (error) {}
+
+    var ua = navigator.userAgent || "";
+    return /GoogleTV|Android TV|SMART-TV|AFT|BRAVIA|TV\b/i.test(ua);
+  }
+
+  if (!isTvMode()) return;
+
+  document.documentElement.classList.add("tv-mode");
+
+  function isVisible(el) {
+    if (!el || !el.isConnected) return false;
+    var style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    var rect = el.getBoundingClientRect();
+    return rect.width > 16 && rect.height > 16;
+  }
+
+  function isNaturallyFocusable(el) {
+    return /^(A|BUTTON|INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+  }
+
+  function isTextInput(el) {
+    return !!el && (
+      el.tagName === "TEXTAREA" ||
+      (el.tagName === "INPUT" && !/^(button|checkbox|color|file|hidden|image|radio|range|reset|submit)$/i.test(el.type || "text")) ||
+      el.isContentEditable
+    );
+  }
+
+  function markFocusable(el, options) {
+    if (!el || el.dataset.tvFocusable === "1" || !isVisible(el)) return;
+
+    el.dataset.tvFocusable = "1";
+    if (options && options.card) {
+      el.classList.add(CARD_CLASS);
+      el.dataset.tvCard = "1";
+    }
+
+    if (!isNaturallyFocusable(el) && el.tabIndex < 0) {
+      el.tabIndex = 0;
+    }
+  }
+
+  function candidateScore(fromRect, toRect, direction) {
+    var fromX = fromRect.left + fromRect.width / 2;
+    var fromY = fromRect.top + fromRect.height / 2;
+    var toX = toRect.left + toRect.width / 2;
+    var toY = toRect.top + toRect.height / 2;
+    var dx = toX - fromX;
+    var dy = toY - fromY;
+
+    if (direction === "left" && dx >= -8) return Infinity;
+    if (direction === "right" && dx <= 8) return Infinity;
+    if (direction === "up" && dy >= -8) return Infinity;
+    if (direction === "down" && dy <= 8) return Infinity;
+
+    var primary = direction === "left" || direction === "right" ? Math.abs(dx) : Math.abs(dy);
+    var secondary = direction === "left" || direction === "right" ? Math.abs(dy) : Math.abs(dx);
+    return primary + secondary * 3;
+  }
+
+  function focusables() {
+    return Array.from(document.querySelectorAll("[data-tv-focusable='1']")).filter(isVisible);
+  }
+
+  function getFocusableTarget(el) {
+    return el && el.closest("[data-tv-focusable='1']");
+  }
+
+  function getRowCards(rowId) {
+    return focusables()
+      .filter(function (el) {
+        return el.dataset.tvRowId === rowId && el.dataset.tvCard === "1";
+      })
+      .sort(function (a, b) {
+        return Number(a.dataset.tvRowIndex || "0") - Number(b.dataset.tvRowIndex || "0");
+      });
+  }
+
+  function getRowContainer(rowId) {
+    return document.querySelector(ROW_SELECTOR + '[data-tv-row-id="' + rowId + '"]');
+  }
+
+  function rowCenterY(rowId) {
+    var row = getRowContainer(rowId);
+    if (!row) return null;
+    var rect = row.getBoundingClientRect();
+    return rect.top + rect.height / 2;
+  }
+
+  function cardCenterX(card) {
+    var rect = card.getBoundingClientRect();
+    return rect.left + rect.width / 2;
+  }
+
+  function getCurrentRowTarget() {
+    var active = getFocusableTarget(document.activeElement);
+    if (!active || !active.dataset.tvRowId) return null;
+    return active;
+  }
+
+  function canScrollRow(row, direction) {
+    if (!row) return false;
+    if (direction === "right") {
+      return row.scrollLeft + row.clientWidth < row.scrollWidth - 8;
+    }
+    return row.scrollLeft > 8;
+  }
+
+  function revealMoreRow(rowId, direction, fallbackIndex) {
+    var row = getRowContainer(rowId);
+    if (!canScrollRow(row, direction)) return false;
+
+    var amount = Math.max(220, Math.floor(row.clientWidth * 0.65));
+    row.scrollBy({
+      left: direction === "right" ? amount : -amount,
+      behavior: "smooth"
+    });
+
+    window.setTimeout(function () {
+      assignFocusables();
+      var cards = getRowCards(rowId);
+      if (!cards.length) return;
+      var safeIndex = Math.max(0, Math.min(cards.length - 1, fallbackIndex));
+      var target = cards[safeIndex];
+      if (target) {
+        target.focus({ preventScroll: true });
+        target.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+      }
+    }, 220);
+
+    return true;
+  }
+
+  function moveBetweenRows(direction) {
+    var current = getCurrentRowTarget();
+    if (!current) return false;
+
+    var currentRowId = current.dataset.tvRowId;
+    var currentRowY = rowCenterY(currentRowId);
+    if (currentRowY == null) return false;
+
+    var rowIds = Array.from(new Set(
+      focusables()
+        .filter(function (el) { return el.dataset.tvCard === "1" && el.dataset.tvRowId; })
+        .map(function (el) { return el.dataset.tvRowId; })
+    )).sort(function (a, b) {
+      return rowCenterY(a) - rowCenterY(b);
+    });
+
+    var currentRowIndex = rowIds.indexOf(currentRowId);
+    if (currentRowIndex === -1) return false;
+
+    var targetRowIndex = direction === "down" ? currentRowIndex + 1 : currentRowIndex - 1;
+    if (targetRowIndex < 0 || targetRowIndex >= rowIds.length) return false;
+
+    var targetRowId = rowIds[targetRowIndex];
+    var targetCards = getRowCards(targetRowId);
+    if (!targetCards.length) return false;
+
+    var currentX = cardCenterX(current);
+    var best = null;
+    var bestDistance = Infinity;
+
+    targetCards.forEach(function (card) {
+      var distance = Math.abs(cardCenterX(card) - currentX);
+      if (distance < bestDistance) {
+        best = card;
+        bestDistance = distance;
+      }
+    });
+
+    if (!best) return false;
+
+    best.focus({ preventScroll: true });
+    best.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    return true;
+  }
+
+  function applyFocusState(target) {
+    if (lastFocused && lastFocused !== target) {
+      lastFocused.classList.remove(ACTIVE_CLASS);
+    }
+    if (target) {
+      target.classList.add(ACTIVE_CLASS);
+      lastFocused = target;
+    }
+  }
+
+  function nearestFocusable(direction) {
+    var current = getFocusableTarget(document.activeElement);
+    var items = focusables();
+    if (!items.length) return null;
+    if (!current || current === document.body) return items[0];
+
+    var currentRect = current.getBoundingClientRect();
+    var best = null;
+    var bestScore = Infinity;
+
+    items.forEach(function (candidate) {
+      if (candidate === current) return;
+      var score = candidateScore(currentRect, candidate.getBoundingClientRect(), direction);
+      if (score < bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    });
+
+    return best;
+  }
+
+  function moveWithinRow(direction) {
+    var current = getCurrentRowTarget();
+    if (!current) return false;
+
+    var rowId = current.dataset.tvRowId;
+    var cards = getRowCards(rowId);
+    if (!cards.length) return false;
+
+    var currentIndex = cards.indexOf(current);
+    if (currentIndex === -1) return false;
+
+    var nextIndex = direction === "left" ? currentIndex - 1 : currentIndex + 1;
+    if (nextIndex < 0 || nextIndex >= cards.length) {
+      return revealMoreRow(
+        rowId,
+        direction,
+        direction === "right" ? cards.length - 1 : 0
+      );
+    }
+
+    var target = cards[nextIndex];
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+
+    var row = getRowContainer(rowId);
+    if (row) {
+      window.setTimeout(function () {
+        target.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+      }, 40);
+    }
+
+    return true;
+  }
+
+  function moveFocus(direction) {
+    if ((direction === "left" || direction === "right") && moveWithinRow(direction)) {
+      return true;
+    }
+
+    if ((direction === "up" || direction === "down") && moveBetweenRows(direction)) {
+      return true;
+    }
+
+    var target = nearestFocusable(direction);
+    if (!target) return false;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    return true;
+  }
+
+  function assignFocusables() {
+    Array.from(document.querySelectorAll("header a, header button, nav a, nav button, input, textarea, select, [role='button']")).forEach(function (el) {
+      markFocusable(el, { card: false });
+    });
+
+    Array.from(document.querySelectorAll(ROW_SELECTOR)).forEach(function (row) {
+      if (!row.dataset.tvRowId) {
+        rowCounter += 1;
+        row.dataset.tvRowId = "row-" + rowCounter;
+      }
+
+      Array.from(row.querySelectorAll(":scope > div > *")).forEach(function (card, index) {
+        markFocusable(card, { card: true });
+        card.dataset.tvRowId = row.dataset.tvRowId;
+        card.dataset.tvRowIndex = String(index);
+      });
+    });
+
+    Array.from(document.querySelectorAll("div.grid > div, div.grid > a, div.grid > button")).forEach(function (item) {
+      if (item.querySelector("img")) {
+        markFocusable(item, { card: true });
+      }
+    });
+
+    Array.from(document.querySelectorAll(".fixed button, .fixed a, .fixed input, .fixed textarea, .absolute button, .absolute a")).forEach(function (el) {
+      if (el.getAttribute("aria-label") === "Scroll left" || el.getAttribute("aria-label") === "Scroll right") {
+        return;
+      }
+      markFocusable(el, { card: false });
+    });
+
+    var items = focusables();
+    if ((!document.activeElement || document.activeElement === document.body) && items.length) {
+      items[0].focus({ preventScroll: true });
+    }
+  }
+
+  function scheduleAssign() {
+    window.clearTimeout(mutationTimer);
+    mutationTimer = window.setTimeout(assignFocusables, 60);
+  }
+
+  document.addEventListener("focusin", function (event) {
+    var target = event.target && event.target.closest("[data-tv-focusable='1']");
+    if (!target) return;
+    applyFocusState(target);
+
+    window.setTimeout(function () {
+      target.scrollIntoView({
+        block: isTextInput(target) ? "center" : "nearest",
+        inline: "nearest",
+        behavior: "smooth"
+      });
+    }, isTextInput(target) ? 120 : 0);
+  }, true);
+
+  document.addEventListener("focusout", function (event) {
+    var target = event.target && event.target.closest("[data-tv-focusable='1']");
+    if (target) target.classList.remove(ACTIVE_CLASS);
+  }, true);
+
+    document.addEventListener("keydown", function (event) {
+    var active = document.activeElement;
+    var key = event.key;
+
+    if (isTextInput(active)) {
+      if (key === "Enter") {
+        var form = active.form;
+        if (form && typeof form.requestSubmit === "function") {
+          form.requestSubmit();
+        } else if (form) {
+          form.submit();
+        }
+        window.setTimeout(function () {
+          active.blur();
+        }, 30);
+      }
+      return;
+    }
+
+    if (key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown") {
+      event.preventDefault();
+      moveFocus(key.replace("Arrow", "").toLowerCase());
+      return;
+    }
+
+    if ((key === "Enter" || key === " ") && active && active.dataset.tvFocusable === "1" && typeof active.click === "function") {
+      event.preventDefault();
+      active.click();
+    }
+  }, true);
+
+  var observer = new MutationObserver(scheduleAssign);
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", assignFocusables);
+  } else {
+    assignFocusables();
+  }
+})();

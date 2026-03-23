@@ -6,6 +6,7 @@
     "build": "npm run build:pages",
     "build:pages": "node scripts/build-pages-output.mjs",
     "discord:status": "node scripts/sync-discord-status.mjs",
+    "discord:status:worker:check": "node --check workers/discord-status-cron.mjs",
     "generate:local-code": "node scripts/generate-local-code.mjs",
     "serve:static": "python3 serve.py",
     "proxy": "node proxy.mjs",
