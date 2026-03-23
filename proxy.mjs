@@ -1,5 +1,6 @@
 import express from "express";
 import crypto from "crypto";
+import WebSocket from "ws";
 
 const app = express();
 const targetHost = "plsdontscrapemelove.flixer.su";
