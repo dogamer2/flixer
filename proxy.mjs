@@ -28,9 +28,9 @@ const STATUS_MESSAGE_ID = "1485547180570837003";
 const REACTION_ROLE_CHANNEL_ID = "1485575611081687090";
 const STATUS_ROLE_ID = "1485575817718403072";
 const ANNOUNCEMENT_ROLE_ID = "1485576547829022840";
-const ROLE_MENU_REACTIONS = ["1️⃣", "2️⃣"];
+const ROLE_MENU_REACTIONS = ["1️⃣"];
 const STATUS_SYNC_INTERVAL_MS = 60 * 1000;
-const ROLE_MENU_MARKER = "[role-menu-v1]";
+const ROLE_MENU_MARKER = "[role-menu-v2]";
 const DISCORD_ALLOWED_USER_ID = "1384867079357861918";
 const GATEWAY_INTENTS = 1 | 1024;
 const discordRuntimeState = {
@@ -203,13 +203,12 @@ async function discordApiRequest(path, init = {}) {
 function buildRoleMenuMessage() {
   return [
     ROLE_MENU_MARKER,
-    "**Choose your notifications**",
-    "React below to manage which updates you want from Flixer.",
+    "**Stay in the loop**",
+    "React below if you want to be notified when the site status changes.",
     "",
-    `1️⃣ <@&${STATUS_ROLE_ID}> for live service status updates`,
-    `2️⃣ <@&${ANNOUNCEMENT_ROLE_ID}> for feature launches, fixes, and announcements`,
+    `1️⃣ <@&${STATUS_ROLE_ID}> for online and offline status alerts`,
     "",
-    "Remove a reaction at any time to opt out.",
+    "Remove your reaction any time to opt out.",
   ].join("\n");
 }
 
@@ -339,10 +338,6 @@ function getRoleIdForEmoji(emojiName) {
     return STATUS_ROLE_ID;
   }
 
-  if (emojiName === "2️⃣") {
-    return ANNOUNCEMENT_ROLE_ID;
-  }
-
   return "";
 }
 
@@ -442,7 +437,6 @@ function connectDiscordGateway() {
 
     if (payload?.t === "READY") {
       discordRuntimeState.sessionId = String(payload.d?.session_id || "");
-      await ensureRoleMenuMessage();
       await syncDiscordStatusMessage();
       return;
     }

@@ -47,6 +47,11 @@ async function main() {
       ],
       type: 1,
     },
+    {
+      description: "Post the reaction-role message in the reaction roles channel",
+      name: "setupreact",
+      type: 1,
+    },
   ];
 
   const response = await fetch(endpoint, {

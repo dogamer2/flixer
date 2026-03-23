@@ -16,6 +16,8 @@ const DISCORD_INTERACTION_CHANNEL_MESSAGE = 4;
 const DISCORD_FLAG_EPHEMERAL = 1 << 6;
 const ANNOUNCEMENT_ROLE_ID = "1485576547829022840";
 const REACTION_ROLE_CHANNEL_ID = "1485575611081687090";
+const STATUS_ROLE_ID = "1485575817718403072";
+const ROLE_MENU_MARKER = "[role-menu-v2]";
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -62,7 +64,7 @@ export async function onRequest(context) {
 
   const commandName = String(payload?.data?.name || "").toLowerCase();
 
-  if (commandName !== "generatecode" && commandName !== "announce") {
+  if (commandName !== "generatecode" && commandName !== "announce" && commandName !== "setupreact") {
     return discordMessageResponse("Unsupported command");
   }
 
@@ -99,6 +101,35 @@ export async function onRequest(context) {
     }
 
     return discordMessageResponse("Announcement posted.");
+  }
+
+  if (commandName === "setupreact") {
+    const botToken = String(env?.DISCORD_BOT_TOKEN || env?.DISCORD_TOKEN || "").trim();
+
+    if (!botToken) {
+      return discordMessageResponse("Discord bot token is missing.");
+    }
+
+    try {
+      const message = await discordApiRequest(`/channels/${REACTION_ROLE_CHANNEL_ID}/messages`, botToken, {
+        body: JSON.stringify({
+          content: buildReactionRoleMessage(),
+        }),
+        method: "POST",
+      });
+
+      await discordReactionRequest(
+        `/channels/${REACTION_ROLE_CHANNEL_ID}/messages/${message.id}/reactions/${encodeURIComponent("1️⃣")}/@me`,
+        botToken,
+        "PUT",
+      );
+    } catch (error) {
+      return discordMessageResponse(
+        error instanceof Error ? error.message : "Failed to post reaction-role message",
+      );
+    }
+
+    return discordMessageResponse("Reaction-role message posted.");
   }
 
   let accessCode;
@@ -156,6 +187,20 @@ async function discordApiRequest(path, token, init = {}) {
   return response.json();
 }
 
+async function discordReactionRequest(path, token, method) {
+  const response = await fetch(`https://discord.com/api/v10${path}`, {
+    headers: {
+      authorization: `Bot ${token}`,
+    },
+    method,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Discord API request failed (${response.status}): ${errorBody}`);
+  }
+}
+
 function formatAnnouncementMessage(rawMessage) {
   const cleaned = String(rawMessage || "").replace(/\s+/g, " ").trim();
   const normalized = cleaned.replace(/\s*([.!?])\s*/g, "$1 ").trim();
@@ -171,6 +216,18 @@ function formatAnnouncementMessage(rawMessage) {
     lines.map((line) => `- ${ensureSentence(line)}`).join("\n"),
     "",
     `React with 2️⃣ in <#${REACTION_ROLE_CHANNEL_ID}> to get future announcement alerts.`,
+  ].join("\n");
+}
+
+function buildReactionRoleMessage() {
+  return [
+    ROLE_MENU_MARKER,
+    "**Stay in the loop**",
+    "React below if you want to be notified when the site status changes.",
+    "",
+    `1️⃣ <@&${STATUS_ROLE_ID}> for online and offline status alerts`,
+    "",
+    "Remove your reaction any time to opt out.",
   ].join("\n");
 }
 
