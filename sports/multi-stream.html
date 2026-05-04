@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="css/output.css" rel="stylesheet">
+  <link rel="shortcut icon" href="images/static/favicons/favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="images/static/favicons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="MutStreams" />
+  <link rel="manifest" href="images/static/favicons/site.webmanifest" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+
+
+  <style>:root {
+      --primary: #0080ff;
+      --secondary: #1C1C1C;
+    }
+    body {
+      background-color: #0C0C0C;
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+    }
+    html {
+      scrollbar-gutter: stable;
+    }
+    .contentContain {
+      background-color: var(--bg-dark);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 2rem auto;
+      max-width: 800px;
+    }
+    .player-container {
+      width: 100%;
+      max-width: 900px;
+      text-align: center;
+      margin: 0 auto;
+      position: relative;
+      padding-top: 56.25%;
+    }
+    .player-container iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border-radius: 6px;
+    }
+    iframe {
+      border-radius: 8px;
+    }
+    .btn-primary {
+      background-color: var(--primary);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      transition: background-color 0.3s ease, transform 0.3s ease;
+    }
+    .font-mono {
+      font-family: 'Roboto Mono', monospace;
+    }
+    .bg-secondary {
+      background-color: var(--secondary);
+    }
+    .border-border {
+      border-color: #444;
+    }
+    .text-primary {
+      color: var(--primary);
+    }
+    .transition-all {
+      transition: all 0.3s ease;
+    }
+    .hover\:border-primary:hover {
+      border-color: var(--primary);
+    }
+    .drop-shadow-lg {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    /* Dropdown with pseudo-element blur - fixes Chrome bug with dynamic content */
+    .dropdown-blur {
+      position: relative;
+      isolation: isolate; /* Creates stacking context so z-index: -1 stays within */
+    }
+    .dropdown-blur::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px);
+      border-radius: inherit;
+      z-index: -1;
+      pointer-events: none;
+    }
+    .rounded-lg {
+      border-radius: 8px;
+    }
+    header {
+      background-color: var(--bg-dark);
+      padding: 16px;
+      border-bottom: 1px solid #2c2c2c;
+      position: relative;
+      width: 100%;
+    }
+    header .xl\:max-w-screen-xl {
+      width: 100%;
+      justify-content: center;
+    }
+    @media (max-width: 768px) {
+      header .xl\:max-w-screen-xl {
+        justify-content: flex-start;
+      }
+      header a.flex {
+        margin: 0;
+      }
+    }
+    .playerhidden {
+      display: none;
+    }
+    /* Dropdown specific styles */
+    .stream-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 1rem;
+      background: #0C0C0C;
+      border: 2px solid #444;
+      border-radius: 8px;
+      margin-right: 0.5rem;
+      margin-bottom: 0.5rem;
+      transition: all 0.3s ease;
+    }
+    .stream-chip:hover {
+      border-color: var(--primary);
+    }
+    .stream-chip .remove {
+      margin-left: 0.75rem;
+      cursor: pointer;
+      color: #888;
+      font-size: 1.25rem;
+      transition: color 0.2s;
+    }
+    .stream-chip .remove:hover {
+      color: #fff;
+    }
+
+    /* Multistream Banner Styles */
+    .multistream-banner {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background-color: rgba(0, 128, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 2px solid var(--primary);
+      border-radius: 12px;
+      padding: 0;
+      z-index: 9999;
+      width: 320px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+      overflow: hidden;
+    }
+    
+    .multistream-banner.hidden {
+      transform: translateY(150%);
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    .banner-content {
+      display: flex;
+      align-items: center;
+      padding: 15px;
+      position: relative;
+    }
+    
+    .banner-icon {
+      font-size: 24px;
+      margin-right: 15px;
+    }
+    
+    .banner-text {
+      flex: 1;
+    }
+    
+    .banner-text h3 {
+      margin: 0 0 5px 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    
+    .banner-text p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    
+    .banner-link {
+      color: var(--primary);
+      text-decoration: underline;
+      font-weight: 600;
+      transition: color 0.2s;
+    }
+    
+    .banner-link:hover {
+      color: #fff;
+    }
+    
+    .close-banner {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0 5px;
+      line-height: 1;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    
+    .close-banner:hover {
+      opacity: 1;
+    }
+    
+    @media (max-width: 480px) {
+      .multistream-banner {
+        width: calc(100% - 40px);
+        bottom: 10px;
+        right: 10px;
+        left: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Multistream Announcement Banner -->
+  <!--
+-->
+
+  <!-- Multistream Announcement Banner -->
+<!-- Header Section -->
+  <header class="sticky z-50 top-0 w-full p-4 md:py-2.5 md:px-10 bg-transparent border-none backdrop-blur" style="position: sticky; top: 0; z-index: 2147483647;">
+    <div class="xl:max-w-screen-xl mx-auto flex justify-between md:justify-center items-center">
+      <a href="index.html" class="flex items-center">
+        <img src="images/mut_logo.svg" alt="Logo" class="h-11 w-18">
+      </a>
+      <!-- Navigation Links -->
+      <div class="hidden md:flex rounded-xl py-1.5 px-8 backdrop-blur-2xl space-x-4 border-0 ml-8">
+        <a href="category/basketball.html" class="text-white font-bold hover:text-[#0080ff]">NBA Streams</a>
+        <a href="category/american-football.html" class="text-white font-bold hover:text-[#0080ff]">NFL Streams</a>
+        <a href="category/hockey.html" class="text-white font-bold hover:text-[#0080ff]">NHL Streams</a>
+        <a href="category/baseball.html" class="text-white font-bold hover:text-[#0080ff]">MLB Streams</a>
+        <a href="category/fight.html" class="text-white font-bold hover:text-[#0080ff]">Fight Streams</a>
+        <a href="category/motor-sports.html" class="text-white font-bold hover:text-[#0080ff]">Racing Streams</a>
+        <a href="category/other.html" class="text-white font-bold hover:text-[#0080ff]">Other Streams</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Menu Button -->
+  <button id="mobile-menu-button" class="md:hidden text-white fixed top-4 right-4" style="z-index: 2147483647;">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+    </svg>
+  </button>
+
+  <!-- Mobile Navigation Menu -->
+  <nav id="mobile-nav-links" class="hidden md:hidden flex flex-col space-y-4 backdrop-blur p-4 fixed top-16 right-4 rounded-lg z-50" style="z-index: 2147483647;">
+    <a href="category/basketball.html" class="text-white font-bold hover:text-[#0080ff]">NBA Streams</a>
+    <a href="category/american-football.html" class="text-white font-bold hover:text-[#0080ff]">NFL Streams</a>
+    <a href="category/hockey.html" class="text-white font-bold hover:text-[#0080ff]">NHL Streams</a>
+    <a href="category/baseball.html" class="text-white font-bold hover:text-[#0080ff]">MLB Streams</a>
+    <a href="category/fight.html" class="text-white font-bold hover:text-[#0080ff]">Fight Streams</a>
+    <a href="category/motor-sports.html" class="text-white font-bold hover:text-[#0080ff]">Racing Streams</a>
+    <a href="category/other.html" class="text-white font-bold hover:text-[#0080ff]">Other Streams</a>
+  </nav>
+  
+  <main class="container mx-auto px-8 py-6">
+    <div class="mb-8">
+      <h1 class="text-2xl font-bold mb-4">Multi Stream Viewer</h1>
+      <p class="text-gray-400">Select up to 4 streams to watch simultaneously</p>
+    </div>
+
+    <!-- Stream Display Grid -->
+    <div id="streamGrid" class="grid gap-4 mb-8">
+      <!-- Streams will be dynamically added here -->
+    </div>
+
+    <!-- Visual separator and spacing -->
+    <div class="border-t-2 border-gray-700 my-12 w-full"></div>
+
+    <!-- Stream Selection Area -->
+    <div class="mb-8">
+      <!-- Selected Streams Display -->
+      <div id="selectedStreamsDisplay" class="mb-1 p-4 bg-gray-900 rounded-lg"></div>
+
+      <!-- Stream Selection Dropdown -->
+      <div class="relative" style="z-index: 40;">
+        <div class="transition-all hover:border-primary hover:bg-[#111827] hover:shadow-xl w-full border-[#444] drop-shadow-lg border-2 rounded-lg flex p-4 items-center gap-2 cursor-pointer" style="cursor: pointer;" onclick="toggleDropdown()">
+          <div class="flex gap-2 items-center">
+            <h2 class="font-mono font-bold">ADD</h2>
+            <span class="text-[#0080ff] rounded-lg">•</span>
+            <h1>Add Stream</h1>
+          </div>
+        </div>
+
+        <!-- Dropdown Content -->
+        <div id="streamDropdown" class="dropdown-blur hidden absolute mt-2 w-full border-2 border-[#444] rounded-lg drop-shadow-lg" style="z-index: 40;">
+          <div class="p-4">
+            <div class="flex gap-2 items-center w-full border-2 border-[#444] rounded-lg p-4 transition-all hover:border-primary">
+              <h2 class="font-mono font-bold">SRC</h2>
+              <span class="text-[#0080ff] rounded-lg">•</span>
+              <input type="text" id="streamSearch" placeholder="Search streams..." 
+                class="bg-transparent w-full focus:outline-none">
+            </div>
+          </div>
+          <div id="streamList" class="max-h-96 overflow-y-auto px-2 pb-2">
+            <!-- Stream options will be added here -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Back Button -->
+    <a href="index.html" class="transition-all hover:border-primary w-full border-[#444] drop-shadow-lg border-2 rounded-lg flex p-4 items-center gap-2">
+      <div class="flex gap-2 items-center">
+        <h2 class="font-mono font-bold">BCK</h2>
+        <span class="text-[#0080ff] rounded-lg">•</span>
+        <h1>Back</h1>
+      </div>
+    </a>
+
+    <style>/* Grid layout styles */
+      #streamGrid {
+        display: grid;
+        gap: 1rem;
+        width: 100%;
+        margin: 0 auto;
+      }
+
+      /* Stream container styles */
+      .stream-container {
+        width: 100%;
+        position: relative;
+        padding-top: 56.25%; /* 16:9 Aspect Ratio */
+        border-radius: 8px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+
+      .stream-container iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 6px;
+      }
+
+      /* Grid layouts based on number of streams */
+      .grid-1 {
+        max-width: 900px;
+        margin: 0 auto;
+      }
+
+      .grid-2 {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: auto auto;
+        gap: 1rem;
+      }
+
+      .grid-3 .stream-container:last-child {
+        grid-column: 1 / 3;
+        grid-row: 2;
+        width: 724px;
+        height: 411px;
+        padding-top: 0;
+        justify-self: center;
+      }
+
+      .grid-3 .stream-container:last-child iframe {
+        position: static;
+        width: 724px;
+        height: 411px;
+      }
+
+      .grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      @media (max-width: 768px) {
+        .grid-2, .grid-3, .grid-4 {
+          grid-template-columns: 1fr;
+        }
+        .grid-3 .stream-container:last-child {
+          grid-column: 1;
+          width: 100% !important;
+          height: auto !important;
+          padding-top: 56.25% !important;
+        }
+        .grid-3 .stream-container:last-child iframe {
+          position: absolute !important;
+          width: 100% !important;
+          height: 100% !important;
+        }
+      }
+    </style>
+  </main>
+
+  <script>
+    let selectedStreams = [];
+    const maxStreams = 4;
+    let allStreams = [];
+
+// Helper function to modify embed URLs
+function modifyEmbedUrl(embedUrl) {
+    return embedUrl.replace('/embed/', '/embed-noads/');
+}
+/*function modifyEmbedUrl(embedUrl) {
+    return embedUrl;
+}
+*/
+
+    // Multistream banner functionality
+    document.addEventListener('DOMContentLoaded', function() {
+      const banner = document.getElementById('multistream-banner');
+      const closeButton = document.getElementById('close-banner');
+      
+      // Get server flag from data attribute
+      const showMultistreamBanner = banner.dataset.showBanner === 'true';
+      
+      // Check if banner should be shown (based on localStorage and server flag)
+      function shouldShowBanner() {
+        // Check if the banner was dismissed in the last 6 hours
+        const dismissedTime = localStorage.getItem('multistreamBannerDismissed');
+        if (dismissedTime) {
+          const sixHoursInMs = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+          const currentTime = new Date().getTime();
+          if (currentTime - parseInt(dismissedTime) < sixHoursInMs) {
+            return false; // Don't show if dismissed less than 6 hours ago
+          }
+        }
+        
+        // Check if the server flag is enabled
+        return showMultistreamBanner;
+      }
+      
+      // Show banner if conditions are met
+      if (shouldShowBanner()) {
+        setTimeout(() => {
+          banner.classList.remove('hidden');
+        }, 1500); // Show after 1.5 seconds for better UX
+      }
+      
+      // Handle banner dismissal
+      closeButton.addEventListener('click', function() {
+        banner.classList.add('hidden');
+        // Store the current timestamp in localStorage
+        localStorage.setItem('multistreamBannerDismissed', new Date().getTime().toString());
+      });
+    });
+
+    // Initialize
+    async function initialize() {
+      try {
+        // Use primary=true to only fetch detailed data for the primary source per match
+        const response = await fetch('/api/streams?primary=true');
+        const sections = await response.json();
+        
+        // Flatten streams from all sections
+        allStreams = sections.flatMap(section => 
+          section.streams.map(stream => ({
+            ...stream,
+            category: section.title
+          }))
+        );
+        
+        populateStreamList();
+        setupEventListeners();
+      } catch (error) {
+        console.error('Error fetching streams:', error);
+      }
+    }
+
+    // Setup event listeners
+    function setupEventListeners() {
+      document.getElementById('streamSearch').addEventListener('input', (e) => {
+        filterStreams(e.target.value);
+      });
+
+      // Close dropdown when clicking outside
+      document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('streamDropdown');
+        const dropdownButton = document.querySelector('.relative');
+        if (!dropdownButton.contains(e.target)) {
+          dropdown.classList.add('hidden');
+        }
+      });
+    }
+
+    // Toggle dropdown
+    function toggleDropdown() {
+      const dropdown = document.getElementById('streamDropdown');
+      dropdown.classList.toggle('hidden');
+    }
+
+    // Filter streams based on search input
+    function filterStreams(searchText) {
+      const streamList = document.getElementById('streamList');
+      const options = streamList.children;
+      
+      for (let option of options) {
+        const title = option.querySelector('.stream-title').textContent.toLowerCase();
+        const category = option.querySelector('.stream-category').textContent.toLowerCase();
+        const matches = title.includes(searchText.toLowerCase()) || 
+                       category.includes(searchText.toLowerCase());
+        option.style.display = matches ? 'block' : 'none';
+      }
+    }
+
+    // Populate stream list
+    function populateStreamList() {
+      const streamList = document.getElementById('streamList');
+      streamList.innerHTML = '';
+      
+      allStreams.forEach(stream => {
+        const option = document.createElement('div');
+        option.className = 'transition-all p-4';
+        option.style.cursor = 'pointer';
+        option.style.transition = 'background-color 0.2s ease';
+        // Strong, clearly visible separator line
+        option.style.borderBottom = '1px solid rgba(255, 255, 255, 0.5)';
+        // Add a top border only for the first item so the list is clearly boxed in
+        if (streamList.children.length === 0) {
+          option.style.borderTop = '1px solid rgba(255, 255, 255, 0.5)';
+        }
+        option.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="flex gap-2 items-center">
+              <span class="stream-title font-bold">${stream.title}</span>
+              <span class="text-[#0080ff] rounded-lg">•</span>
+              <span class="stream-category text-gray-400">${stream.category}</span>
+            </div>
+          </div>
+        `;
+        option.addEventListener('mouseenter', () => {
+          option.style.backgroundColor = '#1a1a1a';
+        });
+        option.addEventListener('mouseleave', () => {
+          option.style.backgroundColor = '';
+        });
+        
+        option.addEventListener('click', () => {
+          handleStreamSelection(stream);
+          toggleDropdown();
+          document.getElementById('streamSearch').value = '';
+          filterStreams('');
+        });
+        
+        streamList.appendChild(option);
+      });
+    }
+
+    // Update selected streams display
+    function updateSelectedStreamsDisplay() {
+      const display = document.getElementById('selectedStreamsDisplay');
+      display.innerHTML = selectedStreams.map(stream => `
+        <div class="stream-chip">
+          <div class="flex gap-2 items-center">
+            <span class="font-mono font-bold">${stream.title}</span>
+            <span class="text-[#0080ff] rounded-lg">•</span>
+            <span class="text-gray-400">${stream.category}</span>
+          </div>
+          <span class="remove" onclick="removeStream('${stream.title}')">×</span>
+        </div>
+      `).join('');
+    }
+
+    // Remove stream
+    function removeStream(title) {
+      selectedStreams = selectedStreams.filter(s => s.title !== title);
+      updateSelectedStreamsDisplay();
+      updateStreamGrid();
+    }
+
+    // Handle stream selection
+    function handleStreamSelection(stream) {
+      if (!selectedStreams.find(s => s.title === stream.title) && selectedStreams.length < maxStreams) {
+        selectedStreams.push(stream);
+        updateSelectedStreamsDisplay();
+        updateStreamGrid();
+      }
+    }
+
+    // Create stream container
+    function createStreamContainer(stream, index, totalStreams) {
+      const streamContainer = document.createElement('div');
+      streamContainer.className = 'stream-container';
+      streamContainer.dataset.streamTitle = stream.title;
+      
+      // Set exact dimensions for third stream in 3-stream layout
+      if (totalStreams === 3 && index === 2) {
+        streamContainer.style.width = '724px';
+        streamContainer.style.height = '411px';
+        streamContainer.style.paddingTop = '0';
+      }
+      
+      const iframe = document.createElement('iframe');
+      // Apply URL modification when setting the src
+      let embedSrc;
+      if (stream.sources && stream.sources.length > 0) {
+          const firstSource = stream.sources[0];
+          // Check if we have the match ID (added from backend)
+          if (firstSource.id) {
+              // Try to get domain from existing embedUrl, otherwise default to streamed.pk
+              let domain = 'https://streamed.pk';
+              if (firstSource.embedUrl) {
+                  try {
+                      // Handle relative URLs just in case, though usually they are absolute from API
+                      if (firstSource.embedUrl.startsWith('http')) {
+                          const urlObj = new URL(firstSource.embedUrl);
+                          domain = urlObj.origin;
+                      }
+                  } catch (e) {
+                      console.error('Error parsing embed URL domain:', e);
+                  }
+              }
+              // Use the multi-source format: /embed-noads/{id}
+              embedSrc = `${domain}/embed-noads/${firstSource.id}`;
+          } else {
+              // Fallback to old logic
+              const embedUrl = firstSource.embedUrl || `${stream.url}/${firstSource.source}/${firstSource.streamNo}`;
+              embedSrc = modifyEmbedUrl(embedUrl);
+          }
+      }
+
+      iframe.src = embedSrc;
+      iframe.allowFullscreen = true;
+      iframe.frameBorder = '0';
+      iframe.marginHeight = '0';
+      iframe.marginWidth = '0';
+      iframe.scrolling = 'no';
+      iframe.allow = 'encrypted-media; picture-in-picture';
+      iframe.referrerPolicy = 'unsafe-url';
+      
+      // Set exact dimensions for third stream iframe
+      if (totalStreams === 3 && index === 2) {
+        iframe.style.position = 'static';
+        iframe.style.width = '724px';
+        iframe.style.height = '411px';
+      }
+      
+      streamContainer.appendChild(iframe);
+      return streamContainer;
+    }
+
+    // Update stream grid layout
+    function updateStreamGrid() {
+      const grid = document.getElementById('streamGrid');
+      grid.className = `grid gap-4 grid-${selectedStreams.length}`;
+      
+      // Remove any streams that are no longer selected
+      Array.from(grid.children).forEach(container => {
+        const title = container.dataset.streamTitle;
+        if (!selectedStreams.find(s => s.title === title)) {
+          container.remove();
+        }
+      });
+      
+      // Add or update streams
+      selectedStreams.forEach((stream, index) => {
+        let container = Array.from(grid.children).find(c => c.dataset.streamTitle === stream.title);
+        
+        if (!container) {
+          // Create new container if stream doesn't exist
+          container = createStreamContainer(stream, index, selectedStreams.length);
+          grid.appendChild(container);
+        } else {
+          // Update existing container if needed (e.g., for third stream dimensions)
+          if (selectedStreams.length === 3 && index === 2) {
+            container.style.width = '724px';
+            container.style.height = '411px';
+            container.style.paddingTop = '0';
+            
+            const iframe = container.querySelector('iframe');
+            iframe.style.position = 'static';
+            iframe.style.width = '724px';
+            iframe.style.height = '411px';
+          } else {
+            container.removeAttribute('style');
+            const iframe = container.querySelector('iframe');
+            iframe.removeAttribute('style');
+          }
+        }
+      });
+    }
+
+    // Initialize
+    initialize();
+
+    // Mobile menu toggle
+    const menuButton = document.getElementById('mobile-menu-button');
+    if (menuButton) {
+      menuButton.addEventListener('click', function() {
+        const mobileNav = document.getElementById('mobile-nav-links');
+        mobileNav.classList.toggle('hidden');
+      });
+    }
+  </script>
+  <script id="aclib" type="text/javascript" src="https://acscdn.com/script/aclib.js"></script>
+
+  <script type="text/javascript">
+    aclib.runPop({
+        zoneId: '10480626',
+    });
+</script>
+
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" data-cf-beacon='{"version":"2024.11.0","token":"995594e3072d4062a9c4e3aeb9b6811e","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}'></script>
+</body>
+</html>
