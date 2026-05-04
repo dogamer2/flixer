@@ -294,12 +294,7 @@
   }
 
   function shouldRunClientAccessGate() {
-    if (typeof document === "undefined") {
-      return false;
-    }
-
-    const pathname = window.location.pathname || "/";
-    return !pathname.startsWith("/api/");
+    return false;
   }
 
   function ensureAccessGateStyles() {
