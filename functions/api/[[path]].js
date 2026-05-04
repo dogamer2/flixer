@@ -13,6 +13,8 @@ import {
   textResponse
 } from "../_shared/proxy.js";
 
+const BUNDLED_WYZIE_KEY = "wyzie-c906fb1acd0204957b95582dfdaa498f";
+
 function buildSubtitleSearchCandidates(searchParams) {
   const cleanedEntries = [];
 
@@ -65,8 +67,19 @@ function buildSubtitleSearchCandidates(searchParams) {
   return candidates;
 }
 
+function resolveWyzieApiKey(searchParams, env) {
+  const requestKey = String(searchParams.get("key") || "").trim();
+  const configuredKey = String(env?.WYZIE_SUBS_API_KEY || "").trim();
+
+  if (requestKey && requestKey !== BUNDLED_WYZIE_KEY) {
+    return requestKey;
+  }
+
+  return configuredKey;
+}
+
 export async function onRequest(context) {
-  const { request, params } = context;
+  const { request, params, env } = context;
   const requestMethod = request.method.toUpperCase();
   const normalizedPath = Array.isArray(params.path)
     ? params.path.join("/")
@@ -139,10 +152,19 @@ export async function onRequest(context) {
   if (path === "/subsearch") {
     try {
       const candidates = buildSubtitleSearchCandidates(requestUrl.searchParams);
+      const resolvedKey = resolveWyzieApiKey(requestUrl.searchParams, env);
 
       for (const params of candidates) {
         const upstreamUrl = new URL("https://sub.wyzie.io/search");
-        upstreamUrl.search = params.toString();
+        const candidateParams = new URLSearchParams(params);
+
+        if (resolvedKey) {
+          candidateParams.set("key", resolvedKey);
+        } else {
+          candidateParams.delete("key");
+        }
+
+        upstreamUrl.search = candidateParams.toString();
 
         const response = await fetch(upstreamUrl.toString(), {
           method: "GET",
@@ -154,7 +176,8 @@ export async function onRequest(context) {
               request.headers.get("user-agent") ||
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
           },
-          redirect: "follow"
+          redirect: "follow",
+          signal: AbortSignal.timeout(8000)
         });
 
         if (response.status < 400) {
