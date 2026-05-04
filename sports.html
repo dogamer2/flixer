@@ -42,16 +42,18 @@
       </div>
     </header>
     <main class="stage">
-      <iframe id="sports-frame" class="frame" src="/mut.st/index.html" loading="eager" referrerpolicy="no-referrer" title="Flixer Sports"></iframe>
+      <iframe id="sports-frame" class="frame" src="about:blank" loading="eager" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-forms" title="Flixer Sports"></iframe>
       <div class="status" id="sports-status">Loading local sports mirror...</div>
     </main>
   </div>
   <script>
     const LOCAL_ROOT = "/mut.st";
-    const REMOTE_HOSTS = new Set(["mutstreams.st", "www.mutstreams.st", "mutstreams.pk", "www.mutstreams.pk", "mut.st", "www.mut.st"]);
+    const PUBLIC_HOST = "https://flixercc.pages.dev";
+    const REMOTE_HOSTS = new Set(["mutstreams.st", "www.mutstreams.st", "mutstreams.pk", "www.mutstreams.pk", "mut.st", "www.mut.st", "flixer.su", "www.flixer.su", "plsdontscrapemelove.flixer.su"]);
     const frame = document.getElementById("sports-frame");
     const status = document.getElementById("sports-status");
     const homeButton = document.getElementById("sports-home");
+    let currentSportsUrl = new URL(LOCAL_ROOT + "/index.html", window.location.origin);
 
     function toLocalSportsUrl(value, currentPath) {
       if (!value || value.startsWith("javascript:") || value.startsWith("mailto:") || value.startsWith("tel:") || value.startsWith("#")) return value;
@@ -67,20 +69,133 @@
       return value;
     }
 
-    function rewriteDocument(doc) {
-      const currentPath = doc.location.href;
-      for (const node of doc.querySelectorAll("a[href]")) {
-        const next = toLocalSportsUrl(node.getAttribute("href"), currentPath);
-        if (next) {
-          node.setAttribute("href", next);
-          node.removeAttribute("target");
-          node.removeAttribute("rel");
-        }
+    function stripBlocks(html) {
+      return html
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+        .replace(/<div id="multistream-banner"[\s\S]*?<\/div>\s*<\/div>/gi, "")
+        .replace(/<a href="https:\/\/flixer\.su"[\s\S]*?<\/a>/gi, "")
+        .replace(/<script\b[^>]*src="https?:\/\/[^"]*"[^>]*><\/script>/gi, "");
+    }
+
+    function rewriteMarkup(html, pageUrl) {
+      const absolutePageUrl = pageUrl.toString();
+      let next = stripBlocks(html);
+
+      next = next
+        .replace(/https:\/\/(?:www\.)?mutstreams\.(?:st|pk)/gi, PUBLIC_HOST)
+        .replace(/https:\/\/(?:www\.)?flixer\.su/gi, PUBLIC_HOST)
+        .replace(/https:\/\/plsdontscrapemelove\.flixer\.su/gi, PUBLIC_HOST)
+        .replace(/\bMutStreams\b/g, "Flixer Sports")
+        .replace(/\bmutstreams\.(?:st|pk)\b/gi, "flixercc.pages.dev")
+        .replace(/\bflixer\.su\b/gi, "flixercc.pages.dev")
+        .replace(/Main domain is now\.[\s\S]*?Bookmark it\.<\/a>/gi, "Hosted on flixercc.pages.dev")
+        .replace(/href="\/(?!\/)/gi, `href="${LOCAL_ROOT}/`)
+        .replace(/src="\/(?!\/)/gi, `src="${LOCAL_ROOT}/`);
+
+      if (/<head[^>]*>/i.test(next)) {
+        next = next.replace(/<head([^>]*)>/i, `<head$1><base href="${absolutePageUrl}">`);
       }
-      for (const node of doc.querySelectorAll("img[src], script[src], link[href], source[src], video[src], iframe[src]")) {
-        const attr = node.hasAttribute("href") ? "href" : "src";
-        const next = toLocalSportsUrl(node.getAttribute(attr), currentPath);
-        if (next) node.setAttribute(attr, next);
+
+      next = next.replace(/<body([^>]*)>/i, `<body$1 data-sports-clean="true">`);
+
+      const bridge = `
+<script>
+  (function () {
+    const LOCAL_ROOT = ${JSON.stringify(LOCAL_ROOT)};
+    const REMOTE_HOSTS = new Set(${JSON.stringify(Array.from(REMOTE_HOSTS))});
+    const CURRENT_URL = ${JSON.stringify(absolutePageUrl)};
+    const PUBLIC_HOST = ${JSON.stringify(PUBLIC_HOST)};
+
+    function toLocal(value) {
+      if (!value || value.startsWith("javascript:") || value.startsWith("mailto:") || value.startsWith("tel:") || value.startsWith("#")) return value;
+      try {
+        const resolved = new URL(value, CURRENT_URL);
+        if (REMOTE_HOSTS.has(resolved.hostname)) return LOCAL_ROOT + resolved.pathname + resolved.search + resolved.hash;
+        if (resolved.origin === window.location.origin && resolved.pathname.startsWith(LOCAL_ROOT + "/")) return resolved.pathname + resolved.search + resolved.hash;
+      } catch (error) {
+        if (value.startsWith("/")) return value.startsWith(LOCAL_ROOT + "/") ? value : LOCAL_ROOT + value;
+        return value;
+      }
+      if (value.startsWith("/")) return value.startsWith(LOCAL_ROOT + "/") ? value : LOCAL_ROOT + value;
+      return value;
+    }
+
+    document.title = (document.title || "Flixer Sports").replace(/MutStreams/gi, "Flixer Sports");
+    document.querySelectorAll("*").forEach(function (node) {
+      if (node.children.length === 0 && node.textContent) {
+        node.textContent = node.textContent
+          .replace(/MutStreams/g, "Flixer Sports")
+          .replace(/mutstreams\\.(st|pk)/gi, "flixercc.pages.dev")
+          .replace(/flixer\\.su/gi, "flixercc.pages.dev");
+      }
+    });
+
+    document.querySelectorAll('a[href]').forEach(function (node) {
+      const next = toLocal(node.getAttribute('href'));
+      if (next) {
+        node.setAttribute('href', next);
+        node.removeAttribute('target');
+        node.removeAttribute('rel');
+      }
+    });
+
+    document.querySelectorAll('img[src], link[href], source[src], video[src], iframe[src]').forEach(function (node) {
+      const attr = node.hasAttribute('href') ? 'href' : 'src';
+      const next = toLocal(node.getAttribute(attr));
+      if (next) node.setAttribute(attr, next);
+    });
+
+    document.addEventListener('click', function (event) {
+      const link = event.target.closest('a[href]');
+      if (!link) return;
+      const href = link.getAttribute('href');
+      if (!href) return;
+      const next = toLocal(href);
+      if (!next) return;
+      if (next.startsWith(LOCAL_ROOT + '/')) {
+        event.preventDefault();
+        parent.postMessage({ type: 'sports:navigate', href: next }, window.location.origin);
+      }
+    }, true);
+
+    document.querySelectorAll('[id*="ad"], [class*="ad"], [class*="banner"], [id*="banner"]').forEach(function (node) {
+      if (node.id === 'sports-frame') return;
+      if (node.closest('.player-container')) return;
+      const text = (node.textContent || '').toLowerCase();
+      if (text.includes('main domain is now') || text.includes('bookmark it') || text.includes('advert') || text.includes('sponsored') || text.includes('try it now')) {
+        node.remove();
+      }
+    });
+  })();
+</script>`;
+
+      if (/<\/body>/i.test(next)) {
+        next = next.replace(/<\/body>/i, bridge + "</body>");
+      } else {
+        next += bridge;
+      }
+
+      return next;
+    }
+
+    async function loadSportsPage(urlLike) {
+      const nextUrl = new URL(urlLike, window.location.origin);
+      if (!nextUrl.pathname.startsWith(LOCAL_ROOT + "/")) {
+        return;
+      }
+      currentSportsUrl = nextUrl;
+      status.textContent = "Loading local sports mirror...";
+      status.classList.remove("hidden");
+      try {
+        const response = await fetch(nextUrl.pathname + nextUrl.search + nextUrl.hash, { credentials: "same-origin" });
+        if (!response.ok) {
+          throw new Error("Failed to load sports page: " + response.status);
+        }
+        const html = await response.text();
+        const cleaned = rewriteMarkup(html, nextUrl);
+        frame.srcdoc = cleaned;
+      } catch (error) {
+        status.textContent = "Sports mirror failed to initialize.";
       }
     }
 
@@ -88,7 +203,6 @@
       try {
         const doc = frame.contentDocument;
         if (!doc) return;
-        rewriteDocument(doc);
         const title = doc.title && doc.title.trim() ? doc.title.trim() : "Live Sports";
         document.title = "Flixer Sports | " + title;
         status.classList.add("hidden");
@@ -98,11 +212,15 @@
     }
 
     frame.addEventListener("load", syncChrome);
-    homeButton.addEventListener("click", () => {
-      frame.src = LOCAL_ROOT + "/index.html";
-      status.textContent = "Loading local sports mirror...";
-      status.classList.remove("hidden");
+    window.addEventListener("message", (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (!event.data || event.data.type !== "sports:navigate" || !event.data.href) return;
+      loadSportsPage(event.data.href);
     });
+    homeButton.addEventListener("click", () => {
+      loadSportsPage(LOCAL_ROOT + "/index.html");
+    });
+    loadSportsPage(LOCAL_ROOT + "/index.html");
   </script>
 </body>
 </html>
