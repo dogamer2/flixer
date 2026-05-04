@@ -13,6 +13,58 @@ import {
   textResponse
 } from "../_shared/proxy.js";
 
+function buildSubtitleSearchCandidates(searchParams) {
+  const cleanedEntries = [];
+
+  for (const [key, rawValue] of searchParams.entries()) {
+    const value = String(rawValue || "").trim();
+    if (!value || value === "undefined" || value === "null") {
+      continue;
+    }
+    cleanedEntries.push([key, value]);
+  }
+
+  const base = new URLSearchParams(cleanedEntries);
+  const candidates = [];
+  const seen = new Set();
+
+  const pushCandidate = (params) => {
+    const key = params.toString();
+    if (!key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    candidates.push(params);
+  };
+
+  pushCandidate(new URLSearchParams(base));
+
+  const strippedFormat = new URLSearchParams(base);
+  strippedFormat.delete("format");
+  strippedFormat.delete("type");
+  pushCandidate(strippedFormat);
+
+  const id = strippedFormat.get("id") || base.get("id") || "";
+  if (id) {
+    const aliases = [
+      ["id", id],
+      ["tmdbId", id],
+      ["tmdb_id", id]
+    ];
+
+    for (const [aliasKey, aliasValue] of aliases) {
+      const params = new URLSearchParams(strippedFormat);
+      params.delete("id");
+      params.delete("tmdbId");
+      params.delete("tmdb_id");
+      params.set(aliasKey, aliasValue);
+      pushCandidate(params);
+    }
+  }
+
+  return candidates;
+}
+
 export async function onRequest(context) {
   const { request, params } = context;
   const requestMethod = request.method.toUpperCase();
@@ -85,31 +137,43 @@ export async function onRequest(context) {
   }
 
   if (path === "/subsearch") {
-    const upstreamUrl = new URL("https://sub.wyzie.io/search");
-    for (const [key, value] of requestUrl.searchParams.entries()) {
-      if (!value || value === "undefined" || value === "null") {
-        continue;
-      }
-      upstreamUrl.searchParams.set(key, value);
-    }
-
     try {
-      const response = await fetch(upstreamUrl.toString(), {
-        method: "GET",
-        headers: {
-          accept: "application/json, text/plain, */*",
-          referer: "https://flixer.su/",
-          origin: "https://flixer.su",
-          "user-agent":
-            request.headers.get("user-agent") ||
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-        },
-        redirect: "follow"
-      });
+      const candidates = buildSubtitleSearchCandidates(requestUrl.searchParams);
 
-      return buildResponse(response, await response.arrayBuffer(), {
-        "Content-Type": response.headers.get("content-type") || "application/json; charset=utf-8",
-        "Cache-Control": "no-store"
+      for (const params of candidates) {
+        const upstreamUrl = new URL("https://sub.wyzie.io/search");
+        upstreamUrl.search = params.toString();
+
+        const response = await fetch(upstreamUrl.toString(), {
+          method: "GET",
+          headers: {
+            accept: "application/json, text/plain, */*",
+            referer: "https://flixer.su/",
+            origin: "https://flixer.su",
+            "user-agent":
+              request.headers.get("user-agent") ||
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+          },
+          redirect: "follow"
+        });
+
+        if (response.status < 400) {
+          return buildResponse(response, await response.arrayBuffer(), {
+            "Content-Type": response.headers.get("content-type") || "application/json; charset=utf-8",
+            "Cache-Control": "no-store"
+          });
+        }
+      }
+
+      return new Response("[]", {
+        status: 200,
+        headers: new Headers({
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "*",
+          "Cache-Control": "no-store",
+          "Content-Type": "application/json; charset=utf-8"
+        })
       });
     } catch (error) {
       return jsonResponse({ error: error.message }, 500);
