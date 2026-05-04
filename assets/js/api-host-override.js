@@ -23,6 +23,7 @@
   const PROXY_URL = IS_PRODUCTION_HOST ? window.location.origin : DEV_PROXY_URL;
   const SHOULD_FORWARD_HEADERS = !IS_PRODUCTION_HOST;
   const MEDIA_PROXY_PATH = IS_STATIC_EDGE_HOST ? "/api/media" : "/__media_proxy__";
+  const MEDIA_PROXY_FALLBACK_ORIGIN = "https://flixer-jw67.onrender.com";
   const STATIC_EDGE_MEDIA_PROXY_ORIGIN = "";
   const HARDCODED_MEDIA_PROXY_ORIGIN = "";
   const MEDIA_PROXY_OVERRIDE_STORAGE_KEY = "flixer_media_proxy_origin";
@@ -291,6 +292,80 @@
     } catch (_error) {
       return false;
     }
+  }
+
+  function getMediaProxyRetryUrl(url) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      const mediaUrl = parsed.searchParams.get("url");
+      if (!mediaUrl) {
+        return "";
+      }
+
+      const target = new URL(mediaUrl, window.location.origin);
+      if (!target.hostname.endsWith(".workers.dev")) {
+        return "";
+      }
+
+      const isSameOriginMedia = parsed.origin === window.location.origin && parsed.pathname === "/api/media";
+      const isExternalRelay =
+        parsed.pathname === "/__media_proxy__" &&
+        parsed.origin === new URL(MEDIA_PROXY_FALLBACK_ORIGIN, window.location.origin).origin;
+
+      if (isSameOriginMedia) {
+        const fallbackUrl = new URL("/__media_proxy__", MEDIA_PROXY_FALLBACK_ORIGIN);
+        fallbackUrl.searchParams.set("url", target.toString());
+        return fallbackUrl.toString();
+      }
+
+      if (isExternalRelay) {
+        const fallbackUrl = new URL("/api/media", window.location.origin);
+        fallbackUrl.searchParams.set("url", target.toString());
+        return fallbackUrl.toString();
+      }
+    } catch (_error) {}
+
+    return "";
+  }
+
+  async function fetchWithMediaProxyFallback(input, init, requestUrl, response) {
+    const method =
+      input instanceof Request
+        ? String(input.method || "GET").toUpperCase()
+        : String((init && init.method) || "GET").toUpperCase();
+
+    if (!["GET", "HEAD"].includes(method)) {
+      return response;
+    }
+
+    if (![403, 429].includes(response.status)) {
+      return response;
+    }
+
+    const retryUrl = getMediaProxyRetryUrl(requestUrl);
+    if (!retryUrl || retryUrl === requestUrl) {
+      return response;
+    }
+
+    if (input instanceof Request) {
+      return originalFetch(
+        new Request(retryUrl, {
+          method: input.method,
+          headers: init && init.headers ? init.headers : input.headers,
+          mode: SHOULD_FORWARD_HEADERS ? "cors" : input.mode,
+          credentials: input.credentials,
+          cache: input.cache,
+          redirect: input.redirect,
+          referrer: input.referrer,
+          referrerPolicy: input.referrerPolicy,
+          integrity: input.integrity,
+          keepalive: input.keepalive,
+          signal: input.signal
+        })
+      );
+    }
+
+    return originalFetch(retryUrl, init);
   }
 
   function shouldRunClientAccessGate() {
@@ -883,7 +958,9 @@
         }
       }
     }
-    return originalFetch(input, init);
+    return originalFetch(input, init).then(function (response) {
+      return fetchWithMediaProxyFallback(input, init, newUrl || url, response);
+    });
   };
 
   // Intercept XHR
