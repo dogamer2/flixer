@@ -155,36 +155,44 @@ export async function onRequest(context) {
       const resolvedKey = resolveWyzieApiKey(requestUrl.searchParams, env);
 
       for (const params of candidates) {
-        const upstreamUrl = new URL("https://sub.wyzie.io/search");
-        const candidateParams = new URLSearchParams(params);
+        try {
+          const upstreamUrl = new URL("https://sub.wyzie.io/search");
+          const candidateParams = new URLSearchParams(params);
 
-        if (resolvedKey) {
-          candidateParams.set("key", resolvedKey);
-        } else {
-          candidateParams.delete("key");
-        }
+          if (resolvedKey) {
+            candidateParams.set("key", resolvedKey);
+          } else {
+            candidateParams.delete("key");
+          }
 
-        upstreamUrl.search = candidateParams.toString();
+          upstreamUrl.search = candidateParams.toString();
 
-        const response = await fetch(upstreamUrl.toString(), {
-          method: "GET",
-          headers: {
-            accept: "application/json, text/plain, */*",
-            referer: "https://flixer.su/",
-            origin: "https://flixer.su",
-            "user-agent":
-              request.headers.get("user-agent") ||
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-          },
-          redirect: "follow",
-          signal: AbortSignal.timeout(8000)
-        });
+          const response = await Promise.race([
+            fetch(upstreamUrl.toString(), {
+              method: "GET",
+              headers: {
+                accept: "application/json, text/plain, */*",
+                referer: "https://flixer.su/",
+                origin: "https://flixer.su",
+                "user-agent":
+                  request.headers.get("user-agent") ||
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+              },
+              redirect: "follow"
+            }),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Subtitle search timeout")), 8000)
+            )
+          ]);
 
-        if (response.status < 400) {
-          return buildResponse(response, await response.arrayBuffer(), {
-            "Content-Type": response.headers.get("content-type") || "application/json; charset=utf-8",
-            "Cache-Control": "no-store"
-          });
+          if (response.status < 400) {
+            return buildResponse(response, await response.arrayBuffer(), {
+              "Content-Type": response.headers.get("content-type") || "application/json; charset=utf-8",
+              "Cache-Control": "no-store"
+            });
+          }
+        } catch (_error) {
+          continue;
         }
       }
 
