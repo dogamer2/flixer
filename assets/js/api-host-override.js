@@ -308,19 +308,12 @@
       }
 
       const isSameOriginMedia = parsed.origin === window.location.origin && parsed.pathname === "/api/media";
-      const isExternalRelay =
-        parsed.pathname === "/__media_proxy__" &&
-        parsed.origin === new URL(MEDIA_PROXY_FALLBACK_ORIGIN, window.location.origin).origin;
+      const relayMode = parsed.searchParams.get("relay") || "";
 
-      if (isSameOriginMedia) {
-        const fallbackUrl = new URL("/__media_proxy__", MEDIA_PROXY_FALLBACK_ORIGIN);
-        fallbackUrl.searchParams.set("url", target.toString());
-        return fallbackUrl.toString();
-      }
-
-      if (isExternalRelay) {
+      if (isSameOriginMedia && relayMode !== "render") {
         const fallbackUrl = new URL("/api/media", window.location.origin);
         fallbackUrl.searchParams.set("url", target.toString());
+        fallbackUrl.searchParams.set("relay", "render");
         return fallbackUrl.toString();
       }
     } catch (_error) {}

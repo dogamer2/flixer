@@ -182,6 +182,7 @@ export async function onRequest(context) {
 
   if (path === "/media") {
     const mediaUrl = requestUrl.searchParams.get("url") || "";
+    const relayMode = requestUrl.searchParams.get("relay") || "";
 
     if (!mediaUrl) {
       return textResponse("Missing media url", 400);
@@ -195,7 +196,46 @@ export async function onRequest(context) {
     }
 
     try {
-      const response = await fetchMedia(upstreamUrl, request);
+      let response;
+      if (relayMode === "render") {
+        const relayUrl = new URL("https://flixer-jw67.onrender.com/__media_proxy__");
+        relayUrl.searchParams.set("url", upstreamUrl.toString());
+        response = await fetch(relayUrl.toString(), {
+          method: "GET",
+          headers: {
+            accept:
+              request.headers.get("accept") ||
+              "application/vnd.apple.mpegurl,application/x-mpegURL,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.7",
+            "accept-language": request.headers.get("accept-language") || "en-US,en;q=0.9",
+            "user-agent":
+              request.headers.get("x-forwarded-user-agent") ||
+              request.headers.get("user-agent") ||
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+          },
+          redirect: "follow"
+        });
+      } else {
+        response = await fetchMedia(upstreamUrl, request);
+
+        if (response.status === 403) {
+          const relayUrl = new URL("https://flixer-jw67.onrender.com/__media_proxy__");
+          relayUrl.searchParams.set("url", upstreamUrl.toString());
+          response = await fetch(relayUrl.toString(), {
+            method: "GET",
+            headers: {
+              accept:
+                request.headers.get("accept") ||
+                "application/vnd.apple.mpegurl,application/x-mpegURL,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.7",
+              "accept-language": request.headers.get("accept-language") || "en-US,en;q=0.9",
+              "user-agent":
+                request.headers.get("x-forwarded-user-agent") ||
+                request.headers.get("user-agent") ||
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+            },
+            redirect: "follow"
+          });
+        }
+      }
 
       if (response.status === 429) {
         return buildResponse(response, await response.arrayBuffer(), {
