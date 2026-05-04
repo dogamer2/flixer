@@ -214,6 +214,19 @@ function flattenSubdlSubtitleEntries(subtitleSimpleParsed) {
 
 function findSubdlSeasonSlug(movieInfo, requestedSeason) {
   const seasons = Array.isArray(movieInfo?.seasons) ? movieInfo.seasons : [];
+  const ordinalMap = new Map([
+    ["first", 1],
+    ["second", 2],
+    ["third", 3],
+    ["fourth", 4],
+    ["fifth", 5],
+    ["sixth", 6],
+    ["seventh", 7],
+    ["eighth", 8],
+    ["ninth", 9],
+    ["tenth", 10]
+  ]);
+
   for (const season of seasons) {
     const name = String(season?.name || "");
     const slug = String(season?.number || "").trim();
@@ -227,6 +240,16 @@ function findSubdlSeasonSlug(movieInfo, requestedSeason) {
 
     const parsedSeason = Number.parseInt((name.match(/(\d+)/) || [])[1] || "", 10);
     if (Number.isFinite(parsedSeason) && parsedSeason === requestedSeason) {
+      return slug;
+    }
+
+    const slugSeasonWord = (slug.match(/^(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)-season$/i) || [])[1];
+    if (slugSeasonWord && ordinalMap.get(slugSeasonWord.toLowerCase()) === requestedSeason) {
+      return slug;
+    }
+
+    const nameSeasonWord = (name.match(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/i) || [])[1];
+    if (nameSeasonWord && ordinalMap.get(nameSeasonWord.toLowerCase()) === requestedSeason) {
       return slug;
     }
   }
