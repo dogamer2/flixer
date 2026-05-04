@@ -5,16 +5,12 @@ const DEFAULT_REFERER = "https://flixer.su/";
 const DEFAULT_ORIGIN = "https://flixer.su";
 const DEFAULT_ACCEPT_LANGUAGE = "en-US,en;q=0.9";
 const DEFAULT_API_ACCEPT = "application/json, text/plain, */*";
-const DEFAULT_MEDIA_ACCEPT =
-  "application/vnd.apple.mpegurl,application/x-mpegURL,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.7";
+const DEFAULT_MEDIA_ACCEPT = "*/*";
 const DEFAULT_BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 const DEFAULT_MINIMAL_USER_AGENT = "Mozilla/5.0";
 const VIDSRC_MEDIA_REFERER = "https://vidsrc.cc/";
 const VIDSRC_MEDIA_ORIGIN = "https://vidsrc.cc";
-const DEFAULT_SEC_CH_UA = '"Chromium";v="134", "Google Chrome";v="134", "Not:A-Brand";v="24"';
-const DEFAULT_SEC_CH_UA_MOBILE = "?0";
-const DEFAULT_SEC_CH_UA_PLATFORM = '"Windows"';
 
 const BLOCKED_RESPONSE_HEADERS = new Set([
   "content-encoding",
@@ -109,18 +105,6 @@ function buildProxyHeaders(request, overrides = {}) {
     headers.set("user-agent", DEFAULT_BROWSER_USER_AGENT);
   }
 
-  if (!headers.has("sec-ch-ua")) {
-    headers.set("sec-ch-ua", DEFAULT_SEC_CH_UA);
-  }
-
-  if (!headers.has("sec-ch-ua-mobile")) {
-    headers.set("sec-ch-ua-mobile", DEFAULT_SEC_CH_UA_MOBILE);
-  }
-
-  if (!headers.has("sec-ch-ua-platform")) {
-    headers.set("sec-ch-ua-platform", DEFAULT_SEC_CH_UA_PLATFORM);
-  }
-
   return headers;
 }
 
@@ -178,44 +162,19 @@ function buildVidsrcMediaRequestHeaders(request) {
 function buildMediaRequestHeaders(request, options = {}) {
   const {
     accept = DEFAULT_MEDIA_ACCEPT,
-    includeSiteHeaders = true,
-    origin,
-    referer,
-    secFetchDest = "empty",
-    secFetchMode = "cors",
-    secFetchSite = "cross-site",
-    upgradeInsecureRequests,
-    includeClientHints = true,
-    includeFetchMetadata = true,
-    includeUserAgent = true
+    includeSiteHeaders = true
   } = options;
   const headers = new Headers({
     accept: request.headers.get("accept") || accept,
     "accept-language": request.headers.get("accept-language") || DEFAULT_ACCEPT_LANGUAGE,
-    "cache-control": "no-cache",
-    pragma: "no-cache"
-  });
-
-  if (includeFetchMetadata) {
-    headers.set("sec-fetch-dest", secFetchDest);
-    headers.set("sec-fetch-mode", secFetchMode);
-    headers.set("sec-fetch-site", secFetchSite);
-  }
-
-  if (includeUserAgent) {
-    headers.set(
-      "user-agent",
+    "accept-encoding": "identity",
+    "user-agent":
       request.headers.get("x-forwarded-user-agent") ||
-        request.headers.get("user-agent") ||
-        DEFAULT_BROWSER_USER_AGENT
-    );
-  }
-
-  if (includeClientHints) {
-    headers.set("sec-ch-ua", DEFAULT_SEC_CH_UA);
-    headers.set("sec-ch-ua-mobile", DEFAULT_SEC_CH_UA_MOBILE);
-    headers.set("sec-ch-ua-platform", DEFAULT_SEC_CH_UA_PLATFORM);
-  }
+      request.headers.get("user-agent") ||
+      DEFAULT_MINIMAL_USER_AGENT,
+    "sec-fetch-mode": "cors",
+    "sec-fetch-dest": "empty"
+  });
 
   const range = request.headers.get("range");
   if (range) {
@@ -223,12 +182,9 @@ function buildMediaRequestHeaders(request, options = {}) {
   }
 
   if (includeSiteHeaders) {
-    headers.set("referer", referer || DEFAULT_REFERER);
-    headers.set("origin", origin || DEFAULT_ORIGIN);
-  }
-
-  if (upgradeInsecureRequests !== undefined) {
-    headers.set("upgrade-insecure-requests", String(upgradeInsecureRequests));
+    headers.set("referer", DEFAULT_REFERER);
+    headers.set("origin", DEFAULT_ORIGIN);
+    headers.set("sec-fetch-site", "cross-site");
   }
 
   return headers;
@@ -244,71 +200,16 @@ async function fetchMediaAttempt(upstreamUrl, headers) {
 
 async function fetchMedia(upstreamUrl, request) {
   const isWorkersDev = upstreamUrl.hostname.endsWith(".workers.dev");
-  const embeddedOrigin = getEmbeddedMediaOrigin(upstreamUrl);
-  const attempts = isWorkersDev
-    ? [
-        {
-          exactVidsrcHeaders: true
-        },
-        {
-          accept: "*/*",
-          includeSiteHeaders: false,
-          includeClientHints: false,
-          includeFetchMetadata: false,
-          includeUserAgent: false
-        },
-        {
-          accept: "*/*",
-          includeSiteHeaders: false,
-          includeClientHints: false,
-          includeFetchMetadata: false
-        },
-        {
-          includeSiteHeaders: true
-        },
-        ...(embeddedOrigin
-          ? [
-              {
-                includeSiteHeaders: true,
-                origin: embeddedOrigin,
-                referer: `${embeddedOrigin}/`
-              },
-              {
-                includeSiteHeaders: true,
-                origin: null,
-                referer: `${embeddedOrigin}/`
-              },
-              {
-                includeSiteHeaders: true,
-                origin: null,
-                referer: upstreamUrl.toString()
-              }
-            ]
-          : []),
-        {
-          accept: "*/*",
-          includeSiteHeaders: false,
-          includeClientHints: false,
-          includeFetchMetadata: false,
-          includeUserAgent: false
-        },
-        {
-          includeSiteHeaders: false
-        }
-      ]
-    : [
-        {
-          includeSiteHeaders: true
-        }
-      ];
+  const attempts = isWorkersDev ? ["vidsrc", false, true] : [true];
   let lastResponse = null;
   let lastError = null;
 
   for (const attempt of attempts) {
     try {
-      const headers = attempt.exactVidsrcHeaders
-        ? buildVidsrcMediaRequestHeaders(request)
-        : buildMediaRequestHeaders(request, attempt);
+      const headers =
+        attempt === "vidsrc"
+          ? buildVidsrcMediaRequestHeaders(request)
+          : buildMediaRequestHeaders(request, { includeSiteHeaders: attempt });
       const response = await fetchMediaAttempt(upstreamUrl, headers);
       if (response.status === 429) {
         return response;
