@@ -20,6 +20,8 @@ const ACCESS_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ACCESS_CODE_GROUP_COUNT = 4;
 const ACCESS_CODE_GROUP_SIZE = 4;
 const ACCESS_CODE_INSERT_ATTEMPTS = 6;
+const BUNDLED_WYZIE_KEY = "wyzie-c906fb1acd0204957b95582dfdaa498f";
+const FALLBACK_WYZIE_KEY = "wyzie-8bf64096ae2e364e6612d386430b592f";
 const localAccessCodeStore = new Map();
 
 app.use(express.raw({ type: "*/*", limit: "25mb" }));
@@ -223,6 +225,26 @@ async function fetchSubtitleSearch(searchParams) {
       continue;
     }
     upstreamUrl.searchParams.set(key, value);
+  }
+
+  if (
+    !upstreamUrl.searchParams.get("language") &&
+    !upstreamUrl.searchParams.get("lang") &&
+    !upstreamUrl.searchParams.get("locale")
+  ) {
+    upstreamUrl.searchParams.set("language", "en");
+  }
+
+  if (upstreamUrl.searchParams.has("format") && !upstreamUrl.searchParams.has("type")) {
+    upstreamUrl.searchParams.set("type", upstreamUrl.searchParams.get("format"));
+  }
+
+  const incomingKey = String(upstreamUrl.searchParams.get("key") || "").trim();
+  if (!incomingKey || incomingKey === BUNDLED_WYZIE_KEY) {
+    upstreamUrl.searchParams.set(
+      "key",
+      String(process.env.WYZIE_API_KEY || process.env.WYZIE_SUBS_API_KEY || FALLBACK_WYZIE_KEY).trim()
+    );
   }
 
   return gotScraping({

@@ -539,6 +539,14 @@ function buildSubtitleSearchCandidates(searchParams) {
   const base = new URLSearchParams(cleanedEntries);
   const candidates = [];
   const seen = new Set();
+  const requestedLanguage = String(
+    searchParams.get("language") ||
+    searchParams.get("lang") ||
+    searchParams.get("locale") ||
+    "en"
+  )
+    .trim()
+    .toLowerCase();
 
   const pushCandidate = (params) => {
     const key = params.toString();
@@ -551,10 +559,31 @@ function buildSubtitleSearchCandidates(searchParams) {
 
   pushCandidate(new URLSearchParams(base));
 
+  const withLanguage = new URLSearchParams(base);
+  if (requestedLanguage) {
+    withLanguage.set("language", requestedLanguage);
+  }
+  pushCandidate(withLanguage);
+
   const strippedFormat = new URLSearchParams(base);
   strippedFormat.delete("format");
   strippedFormat.delete("type");
   pushCandidate(strippedFormat);
+
+  const strippedFormatWithLanguage = new URLSearchParams(strippedFormat);
+  if (requestedLanguage) {
+    strippedFormatWithLanguage.set("language", requestedLanguage);
+  }
+  pushCandidate(strippedFormatWithLanguage);
+
+  const typedFormat = new URLSearchParams(base);
+  if (typedFormat.has("format") && !typedFormat.has("type")) {
+    typedFormat.set("type", typedFormat.get("format"));
+  }
+  if (requestedLanguage) {
+    typedFormat.set("language", requestedLanguage);
+  }
+  pushCandidate(typedFormat);
 
   const id = strippedFormat.get("id") || base.get("id") || "";
   if (id) {
@@ -571,6 +600,12 @@ function buildSubtitleSearchCandidates(searchParams) {
       params.delete("tmdb_id");
       params.set(aliasKey, aliasValue);
       pushCandidate(params);
+
+      const paramsWithLanguage = new URLSearchParams(params);
+      if (requestedLanguage) {
+        paramsWithLanguage.set("language", requestedLanguage);
+      }
+      pushCandidate(paramsWithLanguage);
     }
   }
 

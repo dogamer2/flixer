@@ -1,6 +1,5 @@
 (function () {
   const DEV_PROXY_PORT = "3001";
-  const LIVE_SUBTITLE_PROXY_URL = "https://flixer.su";
   const TARGET_DOMAIN = "plsdontscrapemelove.flixer.su";
   const API_DOMAIN = "api.flixer.su";
   const DOM_URL_ATTRS = ["src", "href"];
@@ -220,14 +219,6 @@
     if (typeof url !== "string") return url;
 
     try {
-      if (url.startsWith("/api/subtitle")) {
-        return LIVE_SUBTITLE_PROXY_URL + url;
-      }
-
-      if (url.startsWith("api/subtitle")) {
-        return LIVE_SUBTITLE_PROXY_URL + "/" + url;
-      }
-
       if (url.startsWith("/api/")) {
         return PROXY_URL + url;
       }
@@ -240,6 +231,8 @@
       const isTargetHost = urlObj.hostname === TARGET_DOMAIN;
       const isApiHost = urlObj.hostname === API_DOMAIN;
       const isWorkersMediaHost = urlObj.hostname.endsWith(".workers.dev");
+      const isRenderMediaProxyHost =
+        urlObj.hostname === "flixer-jw67.onrender.com" && urlObj.pathname === "/__media_proxy__";
       const isWyzieSubtitleSearch = urlObj.hostname === "sub.wyzie.io" && urlObj.pathname === "/search";
       const isLiveSubtitleApi = urlObj.hostname === "flixer.su" && urlObj.pathname.startsWith("/api/subtitle");
       const isFlixerClientAsset = urlObj.hostname === "flixer.su" && (urlObj.pathname.startsWith("/assets/client/") || urlObj.pathname.startsWith("/assets/wasm/"));
@@ -255,7 +248,17 @@
       }
 
       if (isLiveSubtitleApi) {
-        return LIVE_SUBTITLE_PROXY_URL + urlObj.pathname + urlObj.search;
+        return PROXY_URL + urlObj.pathname + urlObj.search;
+      }
+
+      if (isRenderMediaProxyHost) {
+        const mediaUrl = urlObj.searchParams.get("url");
+        if (mediaUrl) {
+          const fallbackUrl = new URL("/api/media", PROXY_URL);
+          fallbackUrl.searchParams.set("url", mediaUrl);
+          fallbackUrl.searchParams.set("relay", "render");
+          return fallbackUrl.toString();
+        }
       }
 
       if (isFlixerClientAsset) {
