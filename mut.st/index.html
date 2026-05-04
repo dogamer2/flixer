@@ -10,7 +10,6 @@
     
     <!-- Resource Hints for Performance -->
      <!--<link rel="dns-prefetch" href="//stats.menochi.su">-->
-    <link rel="dns-prefetch" href="https://acscdn.com">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com">
     
@@ -220,9 +219,6 @@
 }
 </script>
 
-<!-- Pixel Code for https://popnotic.com/
-<script defer src="https://popnotic.com/pixel/9zqi51ns6rfrfsq0l2sckql5f7qsslmx"></script>
- END Pixel Code -->
 
     <style>:root {
     --bg-dark: #131314;
@@ -371,11 +367,11 @@
     </div>
   	<div class="container mx-auto pt-2 pb-4">
   <div class="max-w-screen-xl mx-auto">
-    <a href="https://flixer.su" target="_blank" rel="noopener">
+    <a href="https://flixercc.pages.dev" target="_blank" rel="noopener">
       <div style="background-color: #1B3A6B; color: white; border-radius: 0.5rem; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);">
         <div class="p-4 text-center text-sm">
           New: Visit
-          <span class="font-bold" style="text-decoration: underline;">flixer.su</span>
+          <span class="font-bold" style="text-decoration: underline;">flixercc.pages.dev</span>
           to watch FREE movies and shows.
         </div>
       </div>
@@ -617,9 +613,10 @@ async function fetchStreams() {
         const isCategory = pathParts[1] === 'category';
         const category = isCategory ? pathParts[2] : null;
         
-        // Determine which API endpoint to use
-        // Use lite=true to avoid fetching heavy stream details not needed for the homepage
-        const baseUrl = category ? `/api/streams/${category}` : '/api/streams';
+        // Route through the local dev server proxy to avoid browser CORS blocking.
+        const baseUrl = category
+          ? `/api/streams/${category}`
+          : '/api/streams';
         const apiUrl = `${baseUrl}?lite=true`;
         
         const response = await fetch(apiUrl);
@@ -843,14 +840,5 @@ fetchStreams();
     }
 </script>
 
-<!-- Ad Scripts moved to bottom for better performance -->
-<script id="aclib" type="text/javascript" src="https://acscdn.com/script/aclib.js"></script>
-<script type="text/javascript">
-  aclib.runPop({
-    zoneId: '9767086',
-  });
-</script>
-
-<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" data-cf-beacon='{"version":"2024.11.0","token":"995594e3072d4062a9c4e3aeb9b6811e","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}'></script>
 </body>
 </html>

@@ -3,205 +3,196 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Flixer Sports</title>
-  <meta name="description" content="Live sports inside Flixer.">
+  <title>Live Sports | Flixer</title>
   <style>
-    :root { color-scheme: dark; --bg: #050505; --panel: rgba(13, 13, 16, 0.92); --panel-border: rgba(255, 255, 255, 0.08); --text: #f4f4f5; --muted: rgba(244, 244, 245, 0.66); --accent: #e50914; }
+    :root {
+      --bg: #080808;
+      --panel: rgba(12, 12, 12, 0.92);
+      --border: rgba(255, 255, 255, 0.12);
+      --text: #f5f5f5;
+      --muted: rgba(255, 255, 255, 0.68);
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: radial-gradient(circle at top left, rgba(229, 9, 20, 0.18), transparent 28%), radial-gradient(circle at top right, rgba(0, 128, 255, 0.14), transparent 30%), var(--bg); color: var(--text); }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(229, 9, 20, 0.15), transparent 30%),
+        radial-gradient(circle at top right, rgba(0, 128, 255, 0.12), transparent 28%),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
     .shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr; }
-    .chrome { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; position: sticky; top: 0; z-index: 10; background: linear-gradient(90deg, rgba(229, 9, 20, 0.92), rgba(120, 8, 16, 0.92)); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+    .topbar {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 16px 20px; background: var(--panel); backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
     .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .brand img { width: 92px; height: auto; display: block; }
-    .brand-copy strong, .brand-copy span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .brand-copy span { font-size: 12px; color: rgba(255,255,255,0.82); margin-top: 2px; }
-    .actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-    .button { appearance: none; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(0, 0, 0, 0.18); color: var(--text); border-radius: 999px; padding: 10px 14px; font: inherit; cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease; text-decoration: none; }
-    .button:hover { background: rgba(0, 0, 0, 0.28); border-color: rgba(255, 255, 255, 0.28); transform: translateY(-1px); }
-    .button--accent { background: rgba(255,255,255,0.92); color: #111; border-color: transparent; font-weight: 700; }
-    .stage { position: relative; min-height: 0; padding: 14px; }
-    .frame { width: 100%; height: calc(100vh - 86px); border: 1px solid var(--panel-border); border-radius: 18px; background: #000; display: block; }
-    .status { position: absolute; inset: 14px; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--text); background: linear-gradient(180deg, rgba(5, 5, 5, 0.76), rgba(5, 5, 5, 0.94)); border-radius: 18px; transition: opacity 180ms ease; pointer-events: none; }
-    .status-card { max-width: 540px; padding: 24px 28px; border-radius: 20px; background: rgba(19, 19, 24, 0.92); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 24px 60px rgba(0,0,0,0.35); }
-    .status-card strong { display: block; font-size: 24px; margin-bottom: 10px; }
-    .status-card span { display: block; color: var(--muted); line-height: 1.5; }
-    .status.hidden { opacity: 0; }
-    @media (max-width: 720px) { .chrome { padding: 12px; } .brand img { width: 76px; } .brand-copy span { display: none; } .button { padding: 9px 12px; font-size: 14px; } .stage { padding: 10px; } .frame, .status { inset: 10px; height: calc(100vh - 76px); border-radius: 14px; } }
+    .brand img { width: 32px; height: 32px; border-radius: 8px; }
+    .title h1 { margin: 0; font-size: 16px; line-height: 1.2; }
+    .title p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .back-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 10px 14px; border-radius: 999px; border: 1px solid var(--border);
+      color: var(--text); background: rgba(255, 255, 255, 0.04);
+      text-decoration: none; white-space: nowrap;
+    }
+    .frame-wrap { position: relative; min-height: 0; }
+    iframe { display: block; width: 100%; height: calc(100vh - 73px); border: 0; background: #000; }
+    .status {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      padding: 24px; background: var(--bg);
+    }
+    .status[hidden] { display: none; }
+    .status-card {
+      width: min(560px, 100%); padding: 28px; border: 1px solid var(--border);
+      border-radius: 18px; background: rgba(18, 18, 18, 0.95); text-align: center;
+    }
+    .status-card h2 { margin: 0 0 10px; font-size: 22px; }
+    .status-card p { margin: 0; color: var(--muted); line-height: 1.5; }
+    @media (max-width: 640px) {
+      .topbar { padding: 12px 14px; }
+      .title h1 { font-size: 14px; }
+      .title p { font-size: 11px; }
+      iframe { height: calc(100vh - 65px); }
+    }
   </style>
 </head>
 <body>
   <div class="shell">
-    <header class="chrome">
+    <div class="topbar">
       <div class="brand">
         <img src="/assets/images/logo.png" alt="Flixer">
-        <div class="brand-copy">
-          <strong>Live Sports</strong>
-          <span>Embedded same-origin mirror of the imported sports site.</span>
+        <div class="title">
+          <h1>Live Sports</h1>
+          <p>Local `mut.st` mirror on flixercc.pages.dev</p>
         </div>
       </div>
-      <div class="actions">
-        <a class="button" href="/">Back to Flixer</a>
-        <button class="button button--accent" type="button" id="sports-home">Sports Home</button>
-      </div>
-    </header>
-    <main class="stage">
-      <iframe id="sports-frame" class="frame" src="about:blank" loading="eager" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-forms" title="Flixer Sports"></iframe>
-      <div class="status" id="sports-status">
+      <a class="back-btn" href="/">Back To Flixer</a>
+    </div>
+    <div class="frame-wrap">
+      <div id="status" class="status">
         <div class="status-card">
-          <strong id="sports-status-title">Loading sports</strong>
-          <span id="sports-status-text">Rendering the local `mut.st` mirror inside Flixer.</span>
+          <h2>Loading sports</h2>
+          <p>Preparing the local sports mirror and keeping navigation on this domain.</p>
         </div>
       </div>
-    </main>
+      <iframe id="sports-frame" src="/mut.st/index.html" referrerpolicy="no-referrer"></iframe>
+    </div>
   </div>
+
   <script>
-    const LOCAL_ROOT = "/mut.st";
-    const PUBLIC_HOST = "https://flixercc.pages.dev";
-    const REMOTE_HOSTS = new Set(["mutstreams.st", "www.mutstreams.st", "mutstreams.pk", "www.mutstreams.pk", "mut.st", "www.mut.st", "flixer.su", "www.flixer.su", "plsdontscrapemelove.flixer.su"]);
     const frame = document.getElementById("sports-frame");
-    const status = document.getElementById("sports-status");
-    const statusTitle = document.getElementById("sports-status-title");
-    const statusText = document.getElementById("sports-status-text");
-    const homeButton = document.getElementById("sports-home");
+    const status = document.getElementById("status");
+    const MUT_HOSTS = new Set(["mut.st", "www.mut.st", "mutstreams.st", "www.mutstreams.st", "mutstreams.pk", "www.mutstreams.pk", "themut.link", "www.themut.link"]);
 
-    function showStatus(title, text) {
-      statusTitle.textContent = title;
-      statusText.textContent = text;
-      status.classList.remove("hidden");
-    }
-
-    function toLocalSportsUrl(value, currentPath) {
-      if (!value || value.startsWith("javascript:") || value.startsWith("mailto:") || value.startsWith("tel:") || value.startsWith("#")) return value;
+    function toLocalMirrorPath(href, baseHref) {
       try {
-        const resolved = new URL(value, currentPath);
-        if (REMOTE_HOSTS.has(resolved.hostname)) return LOCAL_ROOT + resolved.pathname + resolved.search + resolved.hash;
-        if (resolved.origin === window.location.origin && resolved.pathname.startsWith(LOCAL_ROOT + "/")) return resolved.pathname + resolved.search + resolved.hash;
-      } catch (error) {
-        if (value.startsWith("/")) return value.startsWith(LOCAL_ROOT + "/") ? value : LOCAL_ROOT + value;
-        return value;
+        const url = new URL(href, baseHref);
+        if (MUT_HOSTS.has(url.hostname)) {
+          return `/mut.st${url.pathname}${url.search}${url.hash}`;
+        }
+        if (url.origin === window.location.origin && url.pathname.startsWith("/mut.st/")) {
+          return `${url.pathname}${url.search}${url.hash}`;
+        }
+        if (url.origin === window.location.origin) {
+          return `${url.pathname}${url.search}${url.hash}`;
+        }
+      } catch (_error) {
+        try {
+          const fallback = new URL(href, baseHref);
+          return `/mut.st${fallback.pathname.replace(/^\/mut\.st/, "")}${fallback.search}${fallback.hash}`;
+        } catch (_fallbackError) {}
       }
-      if (value.startsWith("/")) return value.startsWith(LOCAL_ROOT + "/") ? value : LOCAL_ROOT + value;
-      return value;
+      return href;
     }
 
-    function stripBlocks(html) {
-      return html
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-        .replace(/<div id="multistream-banner"[\s\S]*?<\/div>\s*<\/div>/gi, "")
-        .replace(/<a href="https:\/\/flixer\.su"[\s\S]*?<\/a>/gi, "")
-        .replace(/<script\b[^>]*src="https?:\/\/[^"]*"[^>]*><\/script>/gi, "");
+    function removeWarningBlocks(doc) {
+      const textMatchers = [
+        "please use the themut.link web address",
+        "main domain is now",
+        "visit now! bookmark it.",
+        "visit flixercc.pages.dev to watch free movies and shows"
+      ];
+      Array.from(doc.querySelectorAll("a, div, p")).forEach((node) => {
+        const text = (node.textContent || "").toLowerCase().replace(/\s+/g, " ").trim();
+        if (!text) return;
+        if (textMatchers.some((matcher) => text.includes(matcher))) {
+          const block = node.closest("a, .multistream-banner, .container, div");
+          if (block && block.parentNode) block.remove();
+        }
+      });
+      doc.querySelectorAll(".multistream-banner").forEach((node) => node.remove());
     }
 
-    function rewriteMarkup(html, pageUrl) {
-      const absolutePageUrl = pageUrl.toString();
-      let next = stripBlocks(html);
-      next = next
-        .replace(/https:\/\/(?:www\.)?mutstreams\.(?:st|pk)/gi, PUBLIC_HOST)
-        .replace(/https:\/\/(?:www\.)?flixer\.su/gi, PUBLIC_HOST)
-        .replace(/https:\/\/plsdontscrapemelove\.flixer\.su/gi, PUBLIC_HOST)
-        .replace(/\bMutStreams\b/g, "Flixer Sports")
-        .replace(/\bmutstreams\.(?:st|pk)\b/gi, "flixercc.pages.dev")
-        .replace(/\bflixer\.su\b/gi, "flixercc.pages.dev")
-        .replace(/Main domain is now\.[\s\S]*?Bookmark it\.<\/a>/gi, "Hosted on flixercc.pages.dev")
-        .replace(/href="\/(?!\/)/gi, `href="${LOCAL_ROOT}/`)
-        .replace(/src="\/(?!\/)/gi, `src="${LOCAL_ROOT}/`);
-      if (/<head[^>]*>/i.test(next)) next = next.replace(/<head([^>]*)>/i, `<head$1><base href="${absolutePageUrl}">`);
-      next = next.replace(/<body([^>]*)>/i, `<body$1 data-sports-clean="true">`);
-      const bridge = `
-<script>
-  (function () {
-    const LOCAL_ROOT = ${JSON.stringify(LOCAL_ROOT)};
-    const REMOTE_HOSTS = new Set(${JSON.stringify(Array.from(REMOTE_HOSTS))});
-    const CURRENT_URL = ${JSON.stringify(absolutePageUrl)};
-    function toLocal(value) {
-      if (!value || value.startsWith("javascript:") || value.startsWith("mailto:") || value.startsWith("tel:") || value.startsWith("#")) return value;
+    function rewriteLinksAndAssets(doc) {
+      const baseHref = doc.location.href;
+      doc.querySelectorAll("a[href]").forEach((anchor) => {
+        const localHref = toLocalMirrorPath(anchor.getAttribute("href"), baseHref);
+        anchor.setAttribute("href", localHref);
+        anchor.setAttribute("target", "_self");
+        anchor.setAttribute("rel", "noopener noreferrer");
+      });
+      doc.querySelectorAll("img[src], source[src], iframe[src], link[href], script[src]").forEach((node) => {
+        const attr = node.hasAttribute("src") ? "src" : "href";
+        const raw = node.getAttribute(attr);
+        if (!raw) return;
+        try {
+          const url = new URL(raw, baseHref);
+          if (MUT_HOSTS.has(url.hostname)) {
+            node.setAttribute(attr, `/mut.st${url.pathname}${url.search}${url.hash}`);
+          }
+        } catch (_error) {}
+      });
+    }
+
+    function installNetworkRewrites(win) {
+      if (!win || win.__flixerSportsProxyInstalled) return;
+      win.__flixerSportsProxyInstalled = true;
+      const rewriteUrl = (value) => typeof value === "string" ? toLocalMirrorPath(value, win.location.href) : value;
+      const nativeFetch = win.fetch.bind(win);
+      win.fetch = (input, init) => {
+        if (typeof input === "string") return nativeFetch(rewriteUrl(input), init);
+        if (input instanceof Request) return nativeFetch(new Request(rewriteUrl(input.url), input), init);
+        return nativeFetch(input, init);
+      };
+      const NativeXHR = win.XMLHttpRequest;
+      const open = NativeXHR.prototype.open;
+      NativeXHR.prototype.open = function(method, url, ...rest) {
+        return open.call(this, method, rewriteUrl(url), ...rest);
+      };
+    }
+
+    function sanitizeFrame() {
       try {
-        const resolved = new URL(value, CURRENT_URL);
-        if (REMOTE_HOSTS.has(resolved.hostname)) return LOCAL_ROOT + resolved.pathname + resolved.search + resolved.hash;
-        if (resolved.origin === window.location.origin && resolved.pathname.startsWith(LOCAL_ROOT + "/")) return resolved.pathname + resolved.search + resolved.hash;
-      } catch (error) {
-        if (value.startsWith("/")) return value.startsWith(LOCAL_ROOT + "/") ? value : LOCAL_ROOT + value;
-        return value;
-      }
-      if (value.startsWith("/")) return value.startsWith(LOCAL_ROOT + "/") ? value : LOCAL_ROOT + value;
-      return value;
-    }
-    document.title = (document.title || "Flixer Sports").replace(/MutStreams/gi, "Flixer Sports");
-    document.querySelectorAll("*").forEach(function (node) {
-      if (node.children.length === 0 && node.textContent) {
-        node.textContent = node.textContent.replace(/MutStreams/g, "Flixer Sports").replace(/mutstreams\\.(st|pk)/gi, "flixercc.pages.dev").replace(/flixer\\.su/gi, "flixercc.pages.dev");
-      }
-    });
-    document.querySelectorAll('a[href]').forEach(function (node) {
-      const next = toLocal(node.getAttribute('href'));
-      if (next) {
-        node.setAttribute('href', next);
-        node.removeAttribute('target');
-        node.removeAttribute('rel');
-      }
-    });
-    document.querySelectorAll('img[src], link[href], source[src], video[src], iframe[src]').forEach(function (node) {
-      const attr = node.hasAttribute('href') ? 'href' : 'src';
-      const next = toLocal(node.getAttribute(attr));
-      if (next) node.setAttribute(attr, next);
-    });
-    document.addEventListener('click', function (event) {
-      const link = event.target.closest('a[href]');
-      if (!link) return;
-      const href = link.getAttribute('href');
-      if (!href) return;
-      const next = toLocal(href);
-      if (next && next.startsWith(LOCAL_ROOT + '/')) {
-        event.preventDefault();
-        parent.postMessage({ type: 'sports:navigate', href: next }, window.location.origin);
-      }
-    }, true);
-    document.querySelectorAll('[id*="ad"], [class*="ad"], [class*="banner"], [id*="banner"]').forEach(function (node) {
-      if (node.closest('.player-container')) return;
-      const text = (node.textContent || '').toLowerCase();
-      if (text.includes('main domain is now') || text.includes('bookmark it') || text.includes('advert') || text.includes('sponsored') || text.includes('try it now')) node.remove();
-    });
-  })();
-</script>`;
-      if (/<\/body>/i.test(next)) next = next.replace(/<\/body>/i, bridge + "</body>");
-      else next += bridge;
-      return next;
-    }
-
-    async function loadSportsPage(urlLike) {
-      const nextUrl = new URL(urlLike, window.location.origin);
-      if (!nextUrl.pathname.startsWith(LOCAL_ROOT + "/")) return;
-      showStatus("Loading sports", "Rendering the local mut.st mirror inside Flixer.");
-      try {
-        const response = await fetch(nextUrl.pathname + nextUrl.search + nextUrl.hash, { credentials: "same-origin" });
-        if (!response.ok) throw new Error("Failed to load sports page: " + response.status);
-        const cleaned = rewriteMarkup(await response.text(), nextUrl);
-        frame.srcdoc = cleaned;
-      } catch (error) {
-        showStatus("Sports failed to load", "The local sports mirror could not be rendered. This usually means the deployed site is still serving an older file set or the mirrored page was missing.");
-      }
-    }
-
-    frame.addEventListener("load", () => {
-      try {
+        const win = frame.contentWindow;
         const doc = frame.contentDocument;
-        if (!doc) return;
-        const title = doc.title && doc.title.trim() ? doc.title.trim() : "Live Sports";
-        document.title = "Flixer Sports | " + title;
-        status.classList.add("hidden");
-      } catch (error) {
-        showStatus("Sports failed to initialize", "The embedded page loaded but could not be attached correctly.");
+        if (!win || !doc) return;
+        installNetworkRewrites(win);
+        removeWarningBlocks(doc);
+        rewriteLinksAndAssets(doc);
+        status.hidden = true;
+        const observer = new MutationObserver(() => {
+          removeWarningBlocks(doc);
+          rewriteLinksAndAssets(doc);
+        });
+        observer.observe(doc.documentElement, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: ["href", "src"]
+        });
+      } catch (_error) {
+        status.hidden = false;
+        status.querySelector("h2").textContent = "Sports page failed to load";
+        status.querySelector("p").textContent = "The local sports mirror could not be prepared. Check that /mut.st/index.html and /api/streams are deployed.";
       }
-    });
+    }
 
-    window.addEventListener("message", (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (!event.data || event.data.type !== "sports:navigate" || !event.data.href) return;
-      loadSportsPage(event.data.href);
-    });
-
-    homeButton.addEventListener("click", () => loadSportsPage(LOCAL_ROOT + "/index.html"));
-    loadSportsPage(LOCAL_ROOT + "/index.html");
+    frame.addEventListener("load", sanitizeFrame);
   </script>
 </body>
 </html>
