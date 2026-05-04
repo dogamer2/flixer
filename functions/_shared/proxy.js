@@ -384,7 +384,9 @@ function isLikelyHlsManifest(url, headers, bodyText = "") {
 }
 
 function buildMediaProxyUrl(request, absoluteUrl) {
-  const proxyUrl = new URL("/__media_proxy__", request.url);
+  const requestPath = new URL(request.url).pathname;
+  const proxyPath = requestPath.startsWith("/api/media") ? "/api/media" : "/__media_proxy__";
+  const proxyUrl = new URL(proxyPath, request.url);
   proxyUrl.searchParams.set("url", absoluteUrl);
   return proxyUrl.toString();
 }

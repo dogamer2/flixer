@@ -22,8 +22,8 @@
   const DEV_PROXY_URL = `${window.location.protocol}//${hostname}:${DEV_PROXY_PORT}`;
   const PROXY_URL = IS_PRODUCTION_HOST ? window.location.origin : DEV_PROXY_URL;
   const SHOULD_FORWARD_HEADERS = !IS_PRODUCTION_HOST;
-  const MEDIA_PROXY_PATH = "/__media_proxy__";
-  const STATIC_EDGE_MEDIA_PROXY_ORIGIN = "https://flixer-jw67.onrender.com";
+  const MEDIA_PROXY_PATH = IS_STATIC_EDGE_HOST ? "/api/media" : "/__media_proxy__";
+  const STATIC_EDGE_MEDIA_PROXY_ORIGIN = "";
   const HARDCODED_MEDIA_PROXY_ORIGIN = "";
   const MEDIA_PROXY_OVERRIDE_STORAGE_KEY = "flixer_media_proxy_origin";
   const ACCESS_GATE_STYLE_ID = "flixer-access-gate-style";
@@ -101,6 +101,10 @@
   }
 
   function shouldProxyWorkerMedia() {
+    if (IS_STATIC_EDGE_HOST) {
+      return true;
+    }
+
     if (!IS_PRODUCTION_HOST) {
       return true;
     }
@@ -110,25 +114,6 @@
     }
 
     return !IS_STATIC_EDGE_HOST;
-  }
-
-  function isDisabledSubtitleSearchUrl(url) {
-    try {
-      const parsed = new URL(url, window.location.origin);
-      return parsed.hostname === "sub.wyzie.io" && parsed.pathname === "/search";
-    } catch (_error) {
-      return false;
-    }
-  }
-
-  function createEmptySubtitleSearchResponse() {
-    return new Response("[]", {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Cache-Control": "no-store"
-      }
-    });
   }
 
   function isBackupDomainsPage() {
@@ -254,6 +239,7 @@
       const isTargetHost = urlObj.hostname === TARGET_DOMAIN;
       const isApiHost = urlObj.hostname === API_DOMAIN;
       const isWorkersMediaHost = urlObj.hostname.endsWith(".workers.dev");
+      const isWyzieSubtitleSearch = urlObj.hostname === "sub.wyzie.io" && urlObj.pathname === "/search";
       const isLiveSubtitleApi = urlObj.hostname === "flixer.su" && urlObj.pathname.startsWith("/api/subtitle");
       const isFlixerClientAsset = urlObj.hostname === "flixer.su" && (urlObj.pathname.startsWith("/assets/client/") || urlObj.pathname.startsWith("/assets/wasm/"));
       const isAbsoluteFlixerApi =
@@ -262,6 +248,10 @@
       const isLocalApi =
         (urlObj.origin === window.location.origin || urlObj.hostname === "localhost" || urlObj.hostname === "127.0.0.1") &&
         urlObj.pathname.startsWith("/api/");
+
+      if (isWyzieSubtitleSearch) {
+        return PROXY_URL + "/api/subsearch" + urlObj.search;
+      }
 
       if (isLiveSubtitleApi) {
         return LIVE_SUBTITLE_PROXY_URL + urlObj.pathname + urlObj.search;
@@ -867,11 +857,6 @@
   // Intercept Fetch
   window.fetch = function (input, init = {}) {
     let url = (typeof input === "string") ? input : input.url;
-
-    if (isDisabledSubtitleSearchUrl(url)) {
-      return Promise.resolve(createEmptySubtitleSearchResponse());
-    }
-
     let newUrl = rewriteUrl(url);
 
     if (newUrl !== url) {

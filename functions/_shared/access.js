@@ -13,6 +13,7 @@ const LOCAL_ACCESS_CODE_STORE_KEY = "__FLIXER_LOCAL_ACCESS_CODES__";
 const DISCORD_INVITE_URL = "https://discord.gg/v87gDSVK5x";
 const GATE_PUBLIC_PATHS = new Set([
   "/__media_proxy__",
+  "/api/media",
   "/favicon.ico",
   "/assets/icons/apple-touch-icon.png",
   "/assets/icons/favicon.ico",

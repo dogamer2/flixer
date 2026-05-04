@@ -586,6 +586,35 @@ async function fetchSubtitle(url) {
   };
 }
 
+async function fetchSubtitleSearch(searchParams) {
+  const upstreamUrl = new URL("https://sub.wyzie.io/search");
+
+  for (const [key, rawValue] of searchParams.entries()) {
+    const value = String(rawValue || "").trim();
+    if (!value || value === "undefined" || value === "null") {
+      continue;
+    }
+    upstreamUrl.searchParams.set(key, value);
+  }
+
+  const response = await fetch(upstreamUrl, {
+    method: "GET",
+    headers: {
+      accept: "application/json, text/plain, */*",
+      referer: "https://flixer.su/",
+      origin: "https://flixer.su",
+      "user-agent": DEFAULT_BROWSER_USER_AGENT
+    },
+    redirect: "follow"
+  });
+
+  return {
+    statusCode: response.status,
+    headers: Object.fromEntries(response.headers.entries()),
+    body: await response.text()
+  };
+}
+
 function normalizeSubtitleBody(body) {
   const text = String(body || "").replace(/^\uFEFF/, "").replace(/\r+/g, "").trimStart();
   if (/^WEBVTT/i.test(text)) {
@@ -1165,6 +1194,27 @@ app.all(/.*/, async (req, res) => {
       return res.status(200).send(normalizeSubtitleBody(response.body));
     } catch (error) {
       console.error(`🚨 Subtitle Proxy Error: ${error.message}`);
+      return res.status(500).send({ error: error.message });
+    }
+  }
+
+  if (req.path === "/api/subsearch") {
+    console.log(`\n🔎 [SUBSEARCH] ${req.url}`);
+
+    try {
+      const response = await fetchSubtitleSearch(new URL(req.originalUrl || req.url, "http://localhost").searchParams);
+      if (response.statusCode >= 400) {
+        console.log(`❌ [SUBSEARCH ${response.statusCode}]`);
+        res.setHeader("Content-Type", response.headers["content-type"] || "application/json; charset=utf-8");
+        return res.status(response.statusCode).send(response.body);
+      }
+
+      console.log("✅ [SUBSEARCH 200]");
+      res.setHeader("Content-Type", response.headers["content-type"] || "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(200).send(response.body);
+    } catch (error) {
+      console.error(`🚨 Subtitle Search Proxy Error: ${error.message}`);
       return res.status(500).send({ error: error.message });
     }
   }
