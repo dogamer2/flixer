@@ -63,6 +63,19 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get("/", (_req, res) => {
+  res.status(200).type("text/plain; charset=utf-8").send("ok");
+});
+
+app.get("/healthz", (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "flixer-proxy",
+    mediaRoute: "/__media_proxy__",
+    subtitleRoute: "/api/subtitle"
+  });
+});
+
 function applyCorsHeaders(req, res) {
   const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
 
