@@ -1176,8 +1176,10 @@ app.all(/.*/, async (req, res) => {
 
       if (isHlsManifestCandidate(upstreamUrl, response.headers)) {
         console.log("❌ [MEDIA] Invalid HLS manifest payload received");
+        forwardResponseHeaders(res, response.headers);
         res.setHeader("Cache-Control", "no-store");
-        return res.status(502).send("Invalid HLS manifest");
+        res.setHeader("x-media-invalid-manifest", "true");
+        return res.status(response.statusCode >= 400 ? response.statusCode : 502).send(response.body);
       }
 
       forwardResponseHeaders(res, response.headers);
