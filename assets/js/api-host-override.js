@@ -15,6 +15,10 @@
         hostname.startsWith("192.168.") ||
         /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)));
   const IS_PRODUCTION_HOST = !IS_PRIVATE_NETWORK;
+  const IS_STATIC_EDGE_HOST =
+    hostname.endsWith(".pages.dev") ||
+    hostname.endsWith(".netlify.app") ||
+    hostname.endsWith(".vercel.app");
   const DEV_PROXY_URL = `${window.location.protocol}//${hostname}:${DEV_PROXY_PORT}`;
   const PROXY_URL = IS_PRODUCTION_HOST ? window.location.origin : DEV_PROXY_URL;
   const SHOULD_FORWARD_HEADERS = !IS_PRODUCTION_HOST;
@@ -87,6 +91,18 @@
     } catch (_error) {}
 
     return "";
+  }
+
+  function shouldProxyWorkerMedia() {
+    if (!IS_PRODUCTION_HOST) {
+      return true;
+    }
+
+    if (getConfiguredMediaProxyOrigin()) {
+      return true;
+    }
+
+    return !IS_STATIC_EDGE_HOST;
   }
 
   function isDisabledSubtitleSearchUrl(url) {
@@ -253,6 +269,9 @@
       }
 
       if (isWorkersMediaHost) {
+        if (!shouldProxyWorkerMedia()) {
+          return urlObj.toString();
+        }
         const mediaProxyBase = getConfiguredMediaProxyOrigin() || PROXY_URL;
         const mediaProxyUrl = new URL(MEDIA_PROXY_PATH, mediaProxyBase);
         mediaProxyUrl.searchParams.set("url", urlObj.toString());
