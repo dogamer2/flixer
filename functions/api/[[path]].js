@@ -296,7 +296,7 @@ export async function onRequest(context) {
             hostType: "target",
             url: getTargetApiUrl(`/api${path}`, requestUrl.search)
           },
-          ...(path.startsWith("/tmdb/")
+          ...((path.startsWith("/tmdb/") || path.startsWith("/content/"))
             ? [
                 {
                   hostType: "main",
