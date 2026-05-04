@@ -75,6 +75,15 @@ function normalizeComparableTitle(value) {
     .trim();
 }
 
+function getRequestedSeasonEpisode(searchParams) {
+  const season = Number.parseInt(String(searchParams.get("season") || ""), 10);
+  const episode = Number.parseInt(String(searchParams.get("episode") || ""), 10);
+  return {
+    season: Number.isFinite(season) ? season : null,
+    episode: Number.isFinite(episode) ? episode : null
+  };
+}
+
 function detectTmdbType(searchParams) {
   const explicit = String(searchParams.get("mediaType") || searchParams.get("type") || "").trim().toLowerCase();
   if (explicit === "movie" || explicit === "tv") {
@@ -203,6 +212,104 @@ function flattenSubdlSubtitleEntries(subtitleSimpleParsed) {
   return results;
 }
 
+function findSubdlSeasonSlug(movieInfo, requestedSeason) {
+  const seasons = Array.isArray(movieInfo?.seasons) ? movieInfo.seasons : [];
+  for (const season of seasons) {
+    const name = String(season?.name || "");
+    const slug = String(season?.number || "").trim();
+    if (!slug) {
+      continue;
+    }
+
+    if (requestedSeason === 0 && /special/i.test(name)) {
+      return slug;
+    }
+
+    const parsedSeason = Number.parseInt((name.match(/(\d+)/) || [])[1] || "", 10);
+    if (Number.isFinite(parsedSeason) && parsedSeason === requestedSeason) {
+      return slug;
+    }
+  }
+
+  return null;
+}
+
+function buildEpisodePatterns(season, episode) {
+  const paddedSeason = String(season).padStart(2, "0");
+  const paddedEpisode = String(episode).padStart(2, "0");
+  return [
+    new RegExp(`s${paddedSeason}e${paddedEpisode}\\b`, "i"),
+    new RegExp(`${season}x${paddedEpisode}\\b`, "i"),
+    new RegExp(`season\\s*${season}\\s*episode\\s*${episode}\\b`, "i"),
+    new RegExp(`episode\\s*${episode}\\b`, "i")
+  ];
+}
+
+function matchesEpisodeText(text, season, episode) {
+  const normalized = String(text || "");
+  return buildEpisodePatterns(season, episode).some((pattern) => pattern.test(normalized));
+}
+
+function rankSubdlEpisodeCandidate(entry, season, episode) {
+  let score = 0;
+  const title = String(entry?.release || entry?.title || "");
+  const comment = String(entry?.comment || "");
+
+  if (Number(entry?.season) === season) {
+    score += 4;
+  }
+
+  if (Number(entry?.episode) === episode) {
+    score += 12;
+  } else if (Number(entry?.episode) === 0) {
+    score += 1;
+  }
+
+  if (matchesEpisodeText(title, season, episode)) {
+    score += 10;
+  }
+
+  if (matchesEpisodeText(comment, season, episode)) {
+    score += 4;
+  }
+
+  if (/\b(complete|season pack|batch|1-?\d{1,2})\b/i.test(title)) {
+    score -= 2;
+  }
+
+  return score;
+}
+
+function filterSubdlEpisodeEntries(entries, season, episode) {
+  const ranked = entries
+    .map((entry) => ({
+      entry,
+      score: rankSubdlEpisodeCandidate(entry, season, episode)
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score);
+
+  return ranked.map((item) => item.entry);
+}
+
+async function fetchSubdlPageData(url, request, timeoutMs = 10000) {
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: "GET",
+      headers: buildSubtitleProxyHeaders(request),
+      redirect: "follow"
+    },
+    timeoutMs
+  );
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return extractNextDataJson(await response.text());
+}
+
 async function fetchSubdlCandidates(searchParams, request) {
   const tmdbId = String(searchParams.get("id") || searchParams.get("tmdbId") || searchParams.get("tmdb_id") || "").trim();
   if (!tmdbId) {
@@ -214,45 +321,58 @@ async function fetchSubdlCandidates(searchParams, request) {
     return [];
   }
 
-  const searchUrl = `${SUBDL_ORIGIN}/search/${encodeURIComponent(metadata.title)}`;
-  const searchResponse = await fetchWithTimeout(
-    searchUrl,
-    {
-      method: "GET",
-      headers: buildSubtitleProxyHeaders(request),
-      redirect: "follow"
-    },
-    10000
-  );
+  const requested = getRequestedSeasonEpisode(searchParams);
 
-  if (!searchResponse.ok) {
+  const searchUrl = `${SUBDL_ORIGIN}/search/${encodeURIComponent(metadata.title)}`;
+  const searchData = await fetchSubdlPageData(searchUrl, request, 10000);
+  if (!searchData) {
     return [];
   }
 
-  const searchData = extractNextDataJson(await searchResponse.text());
   const searchList = searchData?.props?.pageProps?.list;
   const bestMatch = pickBestSubdlMatch(searchList, metadata);
   if (!bestMatch) {
     return [];
   }
 
-  const detailUrl = `${SUBDL_ORIGIN}/subtitle/${bestMatch.sd_id}/${bestMatch.slug}`;
-  const detailResponse = await fetchWithTimeout(
-    detailUrl,
-    {
-      method: "GET",
-      headers: buildSubtitleProxyHeaders(request),
-      redirect: "follow"
-    },
-    10000
-  );
-
-  if (!detailResponse.ok) {
+  const rootDetailUrl = `${SUBDL_ORIGIN}/subtitle/${bestMatch.sd_id}/${bestMatch.slug}`;
+  const rootDetailData = await fetchSubdlPageData(rootDetailUrl, request, 10000);
+  if (!rootDetailData) {
     return [];
   }
 
-  const detailData = extractNextDataJson(await detailResponse.text());
-  return flattenSubdlSubtitleEntries(detailData?.props?.pageProps?.subtitleSimpleParsed);
+  let detailPageProps = rootDetailData?.props?.pageProps;
+
+  if (metadata.mediaType === "tv" && requested.season !== null) {
+    const seasonSlug = findSubdlSeasonSlug(detailPageProps?.movieInfo, requested.season);
+    if (seasonSlug) {
+      const seasonDetailUrl = `${rootDetailUrl}/${seasonSlug}`;
+      const seasonDetailData = await fetchSubdlPageData(seasonDetailUrl, request, 10000);
+      if (seasonDetailData?.props?.pageProps) {
+        detailPageProps = seasonDetailData.props.pageProps;
+      }
+    }
+  }
+
+  let entries = flattenSubdlSubtitleEntries(detailPageProps?.subtitleSimpleParsed);
+  if (metadata.mediaType === "tv" && requested.season !== null && requested.episode !== null) {
+    const filtered = filterSubdlEpisodeEntries(entries, requested.season, requested.episode);
+    if (filtered.length > 0) {
+      entries = filtered;
+    }
+
+    entries = entries.map((entry) => {
+      const url = new URL(entry.url);
+      url.searchParams.set("season", String(requested.season));
+      url.searchParams.set("episode", String(requested.episode));
+      return {
+        ...entry,
+        url: url.toString()
+      };
+    });
+  }
+
+  return entries;
 }
 
 function readUInt16(bytes, offset) {
@@ -319,8 +439,22 @@ async function inflateRaw(bytes) {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-function pickBestSubtitleEntry(entries) {
+function pickBestSubtitleEntry(entries, requestedSeason = null, requestedEpisode = null) {
   const subtitleEntries = entries.filter((entry) => /\.(srt|vtt)$/i.test(entry.name || ""));
+  if (requestedSeason !== null && requestedEpisode !== null) {
+    const filtered = subtitleEntries
+      .map((entry) => ({
+        entry,
+        score: rankSubdlEpisodeCandidate({ release: entry.name, comment: entry.name }, requestedSeason, requestedEpisode)
+      }))
+      .filter((item) => item.score > 0)
+      .sort((left, right) => right.score - left.score);
+
+    if (filtered.length > 0) {
+      return filtered[0].entry;
+    }
+  }
+
   subtitleEntries.sort((left, right) => {
     const leftScore = /\.srt$/i.test(left.name) ? 2 : 1;
     const rightScore = /\.srt$/i.test(right.name) ? 2 : 1;
@@ -332,10 +466,10 @@ function pickBestSubtitleEntry(entries) {
   return subtitleEntries[0] || null;
 }
 
-async function extractSubtitleFromZipArchive(arrayBuffer) {
+async function extractSubtitleFromZipArchive(arrayBuffer, requestedSeason = null, requestedEpisode = null) {
   const bytes = new Uint8Array(arrayBuffer);
   const entries = parseZipEntries(bytes);
-  const targetEntry = pickBestSubtitleEntry(entries);
+  const targetEntry = pickBestSubtitleEntry(entries, requestedSeason, requestedEpisode);
 
   if (!targetEntry) {
     throw new Error("No supported subtitle file found in archive");
@@ -479,9 +613,11 @@ export async function onRequest(context) {
         parsedSubtitleUrl.hostname.endsWith(".subdl.com");
 
       if (isSubdlDownload) {
+        const requestedSeason = Number.parseInt(parsedSubtitleUrl.searchParams.get("season") || "", 10);
+        const requestedEpisode = Number.parseInt(parsedSubtitleUrl.searchParams.get("episode") || "", 10);
         const archiveUrl = parsedSubtitleUrl.pathname.endsWith(".zip")
-          ? parsedSubtitleUrl.toString()
-          : `${parsedSubtitleUrl.toString().replace(/\/+$/, "")}.zip`;
+          ? parsedSubtitleUrl.origin + parsedSubtitleUrl.pathname
+          : `${parsedSubtitleUrl.origin}${parsedSubtitleUrl.pathname.replace(/\/+$/, "")}.zip`;
         const response = await fetchWithTimeout(
           archiveUrl,
           {
@@ -504,7 +640,11 @@ export async function onRequest(context) {
         }
 
         const normalizedBody = normalizeSubtitleBody(
-          await extractSubtitleFromZipArchive(await response.arrayBuffer())
+          await extractSubtitleFromZipArchive(
+            await response.arrayBuffer(),
+            Number.isFinite(requestedSeason) ? requestedSeason : null,
+            Number.isFinite(requestedEpisode) ? requestedEpisode : null
+          )
         );
 
         return new Response(normalizedBody, {
