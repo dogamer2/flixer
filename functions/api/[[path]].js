@@ -14,6 +14,7 @@ import {
 } from "../_shared/proxy.js";
 
 const BUNDLED_WYZIE_KEY = "wyzie-c906fb1acd0204957b95582dfdaa498f";
+const FALLBACK_WYZIE_KEY = "wyzie-8bf64096ae2e364e6612d386430b592f";
 
 function buildSubtitleSearchCandidates(searchParams) {
   const cleanedEntries = [];
@@ -69,7 +70,9 @@ function buildSubtitleSearchCandidates(searchParams) {
 
 function resolveWyzieApiKey(searchParams, env) {
   const requestKey = String(searchParams.get("key") || "").trim();
-  const configuredKey = String(env?.WYZIE_SUBS_API_KEY || "").trim();
+  const configuredKey = String(
+    env?.WYZIE_API_KEY || env?.WYZIE_SUBS_API_KEY || FALLBACK_WYZIE_KEY
+  ).trim();
 
   if (requestKey && requestKey !== BUNDLED_WYZIE_KEY) {
     return requestKey;

@@ -1,7 +1,7 @@
 (function(){
 if(window.__skipMarkersOverlayInstalled)return;window.__skipMarkersOverlayInstalled=true;
 var SEARCH_BASE="https://sub.wyzie.io/search";
-var SEARCH_KEY="wyzie-c906fb1acd0204957b95582dfdaa498f";
+var SEARCH_KEY="wyzie-8bf64096ae2e364e6612d386430b592f";
 var INTRO_RE=/♪|\b(theme song|opening theme|opening song|theme music|opening credits|main title|intro|theme)\b|\[(music|theme music|opening theme|opening credits|intro|theme song|main title)\]|\((music|theme music|opening theme|opening credits|intro|theme song|main title)\)/i;
 var RECAP_RE=/\b(previously on|last time on|earlier on|last week on|recap)\b|\[(previously|recap)\]|\((previously|recap)\)/i;
 var state={wrap:null,button:null,style:null,key:"",track:"",subtitleSrc:"",markers:null,duration:0,busy:false,dismissed:{intro:false,recap:false}};
