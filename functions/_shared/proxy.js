@@ -285,10 +285,24 @@ function isLikelyHlsManifest(url, headers, bodyText = "") {
 }
 
 function buildMediaProxyUrl(request, absoluteUrl) {
-  const requestPath = new URL(request.url).pathname;
+  const requestUrl = new URL(request.url);
+  const absolute = new URL(absoluteUrl);
+  const requestPath = requestUrl.pathname;
   const proxyPath = requestPath.startsWith("/api/media") ? "/api/media" : "/__media_proxy__";
+
+  if (
+    absolute.origin === requestUrl.origin &&
+    (absolute.pathname === "/api/media" || absolute.pathname === "/__media_proxy__")
+  ) {
+    return absolute.toString();
+  }
+
+  if (absolute.pathname === "/__media_proxy__") {
+    return absolute.toString();
+  }
+
   const proxyUrl = new URL(proxyPath, request.url);
-  proxyUrl.searchParams.set("url", absoluteUrl);
+  proxyUrl.searchParams.set("url", absolute.toString());
   return proxyUrl.toString();
 }
 

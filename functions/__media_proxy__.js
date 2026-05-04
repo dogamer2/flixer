@@ -593,9 +593,23 @@ function isLikelyHlsManifest(url, headers, body) {
 }
 
 function buildMediaProxyUrl(req, absoluteUrl) {
+  const absolute = new URL(absoluteUrl);
   const base = `${req.protocol}://${req.get("host")}`;
+  const baseUrl = new URL(base);
+
+  if (
+    absolute.origin === baseUrl.origin &&
+    (absolute.pathname === "/api/media" || absolute.pathname === "/__media_proxy__")
+  ) {
+    return absolute.toString();
+  }
+
+  if (absolute.pathname === "/__media_proxy__") {
+    return absolute.toString();
+  }
+
   const proxyUrl = new URL("/__media_proxy__", base);
-  proxyUrl.searchParams.set("url", absoluteUrl);
+  proxyUrl.searchParams.set("url", absolute.toString());
   return proxyUrl.toString();
 }
 
