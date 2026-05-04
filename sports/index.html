@@ -53,7 +53,6 @@
     const frame = document.getElementById("sports-frame");
     const status = document.getElementById("sports-status");
     const homeButton = document.getElementById("sports-home");
-    let currentSportsUrl = new URL(LOCAL_ROOT + "/index.html", window.location.origin);
 
     function toLocalSportsUrl(value, currentPath) {
       if (!value || value.startsWith("javascript:") || value.startsWith("mailto:") || value.startsWith("tel:") || value.startsWith("#")) return value;
@@ -80,7 +79,6 @@
     function rewriteMarkup(html, pageUrl) {
       const absolutePageUrl = pageUrl.toString();
       let next = stripBlocks(html);
-
       next = next
         .replace(/https:\/\/(?:www\.)?mutstreams\.(?:st|pk)/gi, PUBLIC_HOST)
         .replace(/https:\/\/(?:www\.)?flixer\.su/gi, PUBLIC_HOST)
@@ -91,21 +89,14 @@
         .replace(/Main domain is now\.[\s\S]*?Bookmark it\.<\/a>/gi, "Hosted on flixercc.pages.dev")
         .replace(/href="\/(?!\/)/gi, `href="${LOCAL_ROOT}/`)
         .replace(/src="\/(?!\/)/gi, `src="${LOCAL_ROOT}/`);
-
-      if (/<head[^>]*>/i.test(next)) {
-        next = next.replace(/<head([^>]*)>/i, `<head$1><base href="${absolutePageUrl}">`);
-      }
-
+      if (/<head[^>]*>/i.test(next)) next = next.replace(/<head([^>]*)>/i, `<head$1><base href="${absolutePageUrl}">`);
       next = next.replace(/<body([^>]*)>/i, `<body$1 data-sports-clean="true">`);
-
       const bridge = `
 <script>
   (function () {
     const LOCAL_ROOT = ${JSON.stringify(LOCAL_ROOT)};
     const REMOTE_HOSTS = new Set(${JSON.stringify(Array.from(REMOTE_HOSTS))});
     const CURRENT_URL = ${JSON.stringify(absolutePageUrl)};
-    const PUBLIC_HOST = ${JSON.stringify(PUBLIC_HOST)};
-
     function toLocal(value) {
       if (!value || value.startsWith("javascript:") || value.startsWith("mailto:") || value.startsWith("tel:") || value.startsWith("#")) return value;
       try {
@@ -119,17 +110,12 @@
       if (value.startsWith("/")) return value.startsWith(LOCAL_ROOT + "/") ? value : LOCAL_ROOT + value;
       return value;
     }
-
     document.title = (document.title || "Flixer Sports").replace(/MutStreams/gi, "Flixer Sports");
     document.querySelectorAll("*").forEach(function (node) {
       if (node.children.length === 0 && node.textContent) {
-        node.textContent = node.textContent
-          .replace(/MutStreams/g, "Flixer Sports")
-          .replace(/mutstreams\\.(st|pk)/gi, "flixercc.pages.dev")
-          .replace(/flixer\\.su/gi, "flixercc.pages.dev");
+        node.textContent = node.textContent.replace(/MutStreams/g, "Flixer Sports").replace(/mutstreams\\.(st|pk)/gi, "flixercc.pages.dev").replace(/flixer\\.su/gi, "flixercc.pages.dev");
       }
     });
-
     document.querySelectorAll('a[href]').forEach(function (node) {
       const next = toLocal(node.getAttribute('href'));
       if (next) {
@@ -138,68 +124,50 @@
         node.removeAttribute('rel');
       }
     });
-
     document.querySelectorAll('img[src], link[href], source[src], video[src], iframe[src]').forEach(function (node) {
       const attr = node.hasAttribute('href') ? 'href' : 'src';
       const next = toLocal(node.getAttribute(attr));
       if (next) node.setAttribute(attr, next);
     });
-
     document.addEventListener('click', function (event) {
       const link = event.target.closest('a[href]');
       if (!link) return;
       const href = link.getAttribute('href');
       if (!href) return;
       const next = toLocal(href);
-      if (!next) return;
-      if (next.startsWith(LOCAL_ROOT + '/')) {
+      if (next && next.startsWith(LOCAL_ROOT + '/')) {
         event.preventDefault();
         parent.postMessage({ type: 'sports:navigate', href: next }, window.location.origin);
       }
     }, true);
-
     document.querySelectorAll('[id*="ad"], [class*="ad"], [class*="banner"], [id*="banner"]').forEach(function (node) {
-      if (node.id === 'sports-frame') return;
       if (node.closest('.player-container')) return;
       const text = (node.textContent || '').toLowerCase();
-      if (text.includes('main domain is now') || text.includes('bookmark it') || text.includes('advert') || text.includes('sponsored') || text.includes('try it now')) {
-        node.remove();
-      }
+      if (text.includes('main domain is now') || text.includes('bookmark it') || text.includes('advert') || text.includes('sponsored') || text.includes('try it now')) node.remove();
     });
   })();
 </script>`;
-
-      if (/<\/body>/i.test(next)) {
-        next = next.replace(/<\/body>/i, bridge + "</body>");
-      } else {
-        next += bridge;
-      }
-
+      if (/<\/body>/i.test(next)) next = next.replace(/<\/body>/i, bridge + "</body>");
+      else next += bridge;
       return next;
     }
 
     async function loadSportsPage(urlLike) {
       const nextUrl = new URL(urlLike, window.location.origin);
-      if (!nextUrl.pathname.startsWith(LOCAL_ROOT + "/")) {
-        return;
-      }
-      currentSportsUrl = nextUrl;
+      if (!nextUrl.pathname.startsWith(LOCAL_ROOT + "/")) return;
       status.textContent = "Loading local sports mirror...";
       status.classList.remove("hidden");
       try {
         const response = await fetch(nextUrl.pathname + nextUrl.search + nextUrl.hash, { credentials: "same-origin" });
-        if (!response.ok) {
-          throw new Error("Failed to load sports page: " + response.status);
-        }
-        const html = await response.text();
-        const cleaned = rewriteMarkup(html, nextUrl);
+        if (!response.ok) throw new Error("Failed to load sports page: " + response.status);
+        const cleaned = rewriteMarkup(await response.text(), nextUrl);
         frame.srcdoc = cleaned;
       } catch (error) {
         status.textContent = "Sports mirror failed to initialize.";
       }
     }
 
-    function syncChrome() {
+    frame.addEventListener("load", () => {
       try {
         const doc = frame.contentDocument;
         if (!doc) return;
@@ -209,17 +177,15 @@
       } catch (error) {
         status.textContent = "Sports mirror failed to initialize.";
       }
-    }
+    });
 
-    frame.addEventListener("load", syncChrome);
     window.addEventListener("message", (event) => {
       if (event.origin !== window.location.origin) return;
       if (!event.data || event.data.type !== "sports:navigate" || !event.data.href) return;
       loadSportsPage(event.data.href);
     });
-    homeButton.addEventListener("click", () => {
-      loadSportsPage(LOCAL_ROOT + "/index.html");
-    });
+
+    homeButton.addEventListener("click", () => loadSportsPage(LOCAL_ROOT + "/index.html"));
     loadSportsPage(LOCAL_ROOT + "/index.html");
   </script>
 </body>
