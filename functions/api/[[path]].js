@@ -15,6 +15,358 @@ import {
 
 const BUNDLED_WYZIE_KEY = "wyzie-c906fb1acd0204957b95582dfdaa498f";
 const FALLBACK_WYZIE_KEY = "wyzie-8bf64096ae2e364e6612d386430b592f";
+const SUBDL_ORIGIN = "https://subdl.com";
+const SUBDL_DOWNLOAD_ORIGIN = "https://dl.subdl.com";
+
+function createJsonArrayResponse(payload) {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: new Headers({
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "*",
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8"
+    })
+  });
+}
+
+function buildSubtitleProxyHeaders(request) {
+  return {
+    accept: "text/html,application/json,text/plain,*/*",
+    "accept-language": request.headers.get("accept-language") || "en-US,en;q=0.9",
+    "user-agent":
+      request.headers.get("user-agent") ||
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+  };
+}
+
+async function fetchWithTimeout(url, init = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(new Error("The operation was aborted due to timeout")), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function extractNextDataJson(html) {
+  const match = String(html || "").match(
+    /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/i
+  );
+
+  if (!match) {
+    throw new Error("Unable to parse Subdl page data");
+  }
+
+  return JSON.parse(match[1]);
+}
+
+function normalizeComparableTitle(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&amp;/g, "&")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function detectTmdbType(searchParams) {
+  const explicit = String(searchParams.get("mediaType") || searchParams.get("type") || "").trim().toLowerCase();
+  if (explicit === "movie" || explicit === "tv") {
+    return explicit;
+  }
+
+  if (searchParams.get("season") || searchParams.get("episode")) {
+    return "tv";
+  }
+
+  return "movie";
+}
+
+async function fetchTmdbMetadata(id, mediaType, request) {
+  const typeOrder = mediaType === "tv" ? ["tv", "movie"] : ["movie", "tv"];
+
+  for (const type of typeOrder) {
+    const upstreamUrl = getApiHostUrl(`/tmdb/${type}/${encodeURIComponent(id)}`, "");
+
+    try {
+      const response = await fetchWithTimeout(
+        upstreamUrl.toString(),
+        {
+          method: "GET",
+          headers: buildSubtitleProxyHeaders(request),
+          redirect: "follow"
+        },
+        8000
+      );
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const payload = await response.json();
+      const title = payload?.title || payload?.name || payload?.original_title || payload?.original_name || "";
+      const releaseDate = payload?.release_date || payload?.first_air_date || "";
+      const year = Number.parseInt(String(releaseDate).slice(0, 4), 10);
+
+      if (title) {
+        return {
+          mediaType: type,
+          title,
+          year: Number.isFinite(year) ? year : null
+        };
+      }
+    } catch (_error) {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function pickBestSubdlMatch(list, metadata) {
+  const desiredTitle = normalizeComparableTitle(metadata?.title);
+  const desiredYear = Number(metadata?.year) || null;
+  const desiredType = metadata?.mediaType || "movie";
+
+  const candidates = Array.isArray(list) ? list : [];
+  const ranked = candidates
+    .filter((entry) => entry && entry.sd_id && entry.slug)
+    .map((entry) => {
+      const normalizedName = normalizeComparableTitle(entry.name || entry.original_name);
+      let score = 0;
+
+      if (entry.type === desiredType) {
+        score += 5;
+      }
+
+      if (desiredYear && Number(entry.year) === desiredYear) {
+        score += 4;
+      }
+
+      if (normalizedName === desiredTitle) {
+        score += 6;
+      } else if (desiredTitle && normalizedName.includes(desiredTitle)) {
+        score += 2;
+      }
+
+      score += Math.min(Number(entry.subtitles_count) || 0, 3);
+
+      return { entry, score };
+    })
+    .sort((left, right) => right.score - left.score);
+
+  return ranked[0]?.entry || null;
+}
+
+function flattenSubdlSubtitleEntries(subtitleSimpleParsed) {
+  const results = [];
+
+  if (!subtitleSimpleParsed || typeof subtitleSimpleParsed !== "object") {
+    return results;
+  }
+
+  for (const [languageName, qualityBuckets] of Object.entries(subtitleSimpleParsed)) {
+    if (!qualityBuckets || typeof qualityBuckets !== "object") {
+      continue;
+    }
+
+    for (const [qualityName, bucket] of Object.entries(qualityBuckets)) {
+      const subs = Array.isArray(bucket?.subs) ? bucket.subs : [];
+      for (const subtitle of subs) {
+        if (!subtitle?.link) {
+          continue;
+        }
+
+        results.push({
+          id: `subdl-${subtitle.id || subtitle.link}`,
+          language: languageName,
+          display: languageName,
+          version: qualityName,
+          release:
+            subtitle.title ||
+            (Array.isArray(subtitle.releases) ? subtitle.releases[0] : "") ||
+            qualityName,
+          isHearingImpaired: Boolean(subtitle.hi),
+          url: `${SUBDL_DOWNLOAD_ORIGIN}/subtitle/${subtitle.link}`,
+          source: "subdl"
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+async function fetchSubdlCandidates(searchParams, request) {
+  const tmdbId = String(searchParams.get("id") || searchParams.get("tmdbId") || searchParams.get("tmdb_id") || "").trim();
+  if (!tmdbId) {
+    return [];
+  }
+
+  const metadata = await fetchTmdbMetadata(tmdbId, detectTmdbType(searchParams), request);
+  if (!metadata?.title) {
+    return [];
+  }
+
+  const searchUrl = `${SUBDL_ORIGIN}/search/${encodeURIComponent(metadata.title)}`;
+  const searchResponse = await fetchWithTimeout(
+    searchUrl,
+    {
+      method: "GET",
+      headers: buildSubtitleProxyHeaders(request),
+      redirect: "follow"
+    },
+    10000
+  );
+
+  if (!searchResponse.ok) {
+    return [];
+  }
+
+  const searchData = extractNextDataJson(await searchResponse.text());
+  const searchList = searchData?.props?.pageProps?.list;
+  const bestMatch = pickBestSubdlMatch(searchList, metadata);
+  if (!bestMatch) {
+    return [];
+  }
+
+  const detailUrl = `${SUBDL_ORIGIN}/subtitle/${bestMatch.sd_id}/${bestMatch.slug}`;
+  const detailResponse = await fetchWithTimeout(
+    detailUrl,
+    {
+      method: "GET",
+      headers: buildSubtitleProxyHeaders(request),
+      redirect: "follow"
+    },
+    10000
+  );
+
+  if (!detailResponse.ok) {
+    return [];
+  }
+
+  const detailData = extractNextDataJson(await detailResponse.text());
+  return flattenSubdlSubtitleEntries(detailData?.props?.pageProps?.subtitleSimpleParsed);
+}
+
+function readUInt16(bytes, offset) {
+  return bytes[offset] | (bytes[offset + 1] << 8);
+}
+
+function readUInt32(bytes, offset) {
+  return (
+    bytes[offset] |
+    (bytes[offset + 1] << 8) |
+    (bytes[offset + 2] << 16) |
+    (bytes[offset + 3] << 24)
+  ) >>> 0;
+}
+
+function findZipEndOfCentralDirectory(bytes) {
+  for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 65557); offset -= 1) {
+    if (readUInt32(bytes, offset) === 0x06054b50) {
+      return offset;
+    }
+  }
+
+  throw new Error("Invalid zip archive");
+}
+
+function parseZipEntries(bytes) {
+  const eocdOffset = findZipEndOfCentralDirectory(bytes);
+  const entryCount = readUInt16(bytes, eocdOffset + 10);
+  const centralDirectoryOffset = readUInt32(bytes, eocdOffset + 16);
+  const decoder = new TextDecoder();
+  const entries = [];
+  let offset = centralDirectoryOffset;
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (readUInt32(bytes, offset) !== 0x02014b50) {
+      throw new Error("Invalid zip central directory");
+    }
+
+    const compressionMethod = readUInt16(bytes, offset + 10);
+    const compressedSize = readUInt32(bytes, offset + 20);
+    const fileNameLength = readUInt16(bytes, offset + 28);
+    const extraLength = readUInt16(bytes, offset + 30);
+    const commentLength = readUInt16(bytes, offset + 32);
+    const localHeaderOffset = readUInt32(bytes, offset + 42);
+    const nameStart = offset + 46;
+    const nameEnd = nameStart + fileNameLength;
+    const name = decoder.decode(bytes.slice(nameStart, nameEnd));
+
+    entries.push({
+      name,
+      compressedSize,
+      compressionMethod,
+      localHeaderOffset
+    });
+
+    offset = nameEnd + extraLength + commentLength;
+  }
+
+  return entries;
+}
+
+async function inflateRaw(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function pickBestSubtitleEntry(entries) {
+  const subtitleEntries = entries.filter((entry) => /\.(srt|vtt)$/i.test(entry.name || ""));
+  subtitleEntries.sort((left, right) => {
+    const leftScore = /\.srt$/i.test(left.name) ? 2 : 1;
+    const rightScore = /\.srt$/i.test(right.name) ? 2 : 1;
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore;
+    }
+    return left.name.length - right.name.length;
+  });
+  return subtitleEntries[0] || null;
+}
+
+async function extractSubtitleFromZipArchive(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const entries = parseZipEntries(bytes);
+  const targetEntry = pickBestSubtitleEntry(entries);
+
+  if (!targetEntry) {
+    throw new Error("No supported subtitle file found in archive");
+  }
+
+  const localOffset = targetEntry.localHeaderOffset;
+  if (readUInt32(bytes, localOffset) !== 0x04034b50) {
+    throw new Error("Invalid zip local file header");
+  }
+
+  const fileNameLength = readUInt16(bytes, localOffset + 26);
+  const extraLength = readUInt16(bytes, localOffset + 28);
+  const dataStart = localOffset + 30 + fileNameLength + extraLength;
+  const dataEnd = dataStart + targetEntry.compressedSize;
+  const compressed = bytes.slice(dataStart, dataEnd);
+
+  let extracted;
+  if (targetEntry.compressionMethod === 0) {
+    extracted = compressed;
+  } else if (targetEntry.compressionMethod === 8) {
+    extracted = await inflateRaw(compressed);
+  } else {
+    throw new Error(`Unsupported zip compression method: ${targetEntry.compressionMethod}`);
+  }
+
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(extracted);
+  } catch {
+    return new TextDecoder().decode(extracted);
+  }
+}
 
 function buildSubtitleSearchCandidates(searchParams) {
   const cleanedEntries = [];
@@ -120,9 +472,53 @@ export async function onRequest(context) {
       return textResponse("Missing subtitle url", 400);
     }
 
-    const upstreamUrl = getMainSiteUrl("/api/subtitle", `?url=${encodeURIComponent(subtitleUrl)}`);
-
     try {
+      const parsedSubtitleUrl = new URL(subtitleUrl);
+      const isSubdlDownload =
+        parsedSubtitleUrl.hostname === "dl.subdl.com" ||
+        parsedSubtitleUrl.hostname.endsWith(".subdl.com");
+
+      if (isSubdlDownload) {
+        const archiveUrl = parsedSubtitleUrl.pathname.endsWith(".zip")
+          ? parsedSubtitleUrl.toString()
+          : `${parsedSubtitleUrl.toString().replace(/\/+$/, "")}.zip`;
+        const response = await fetchWithTimeout(
+          archiveUrl,
+          {
+            method: "GET",
+            headers: {
+              ...buildSubtitleProxyHeaders(request),
+              accept: "application/octet-stream,application/zip;q=0.9,*/*;q=0.8",
+              referer: `${SUBDL_ORIGIN}/`,
+              origin: SUBDL_ORIGIN
+            },
+            redirect: "follow"
+          },
+          12000
+        );
+
+        if (!response.ok) {
+          return buildResponse(response, await response.arrayBuffer(), {
+            "Cache-Control": "no-store"
+          });
+        }
+
+        const normalizedBody = normalizeSubtitleBody(
+          await extractSubtitleFromZipArchive(await response.arrayBuffer())
+        );
+
+        return new Response(normalizedBody, {
+          status: 200,
+          headers: new Headers({
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Content-Type": "text/vtt; charset=utf-8"
+          })
+        });
+      }
+
+      const upstreamUrl = getMainSiteUrl("/api/subtitle", `?url=${encodeURIComponent(subtitleUrl)}`);
       const response = await fetch(upstreamUrl.toString(), {
         method: "GET",
         headers: {
@@ -170,8 +566,9 @@ export async function onRequest(context) {
 
           upstreamUrl.search = candidateParams.toString();
 
-          const response = await Promise.race([
-            fetch(upstreamUrl.toString(), {
+          const response = await fetchWithTimeout(
+            upstreamUrl.toString(),
+            {
               method: "GET",
               headers: {
                 accept: "application/json, text/plain, */*",
@@ -182,33 +579,25 @@ export async function onRequest(context) {
                   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
               },
               redirect: "follow"
-            }),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("Subtitle search timeout")), 8000)
-            )
-          ]);
+            },
+            8000
+          );
 
-          if (response.status < 400) {
-            return buildResponse(response, await response.arrayBuffer(), {
-              "Content-Type": response.headers.get("content-type") || "application/json; charset=utf-8",
-              "Cache-Control": "no-store"
-            });
+          if (!response.ok) {
+            continue;
+          }
+
+          const payload = await response.json().catch(() => null);
+          if (Array.isArray(payload) && payload.length > 0) {
+            return createJsonArrayResponse(payload);
           }
         } catch (_error) {
           continue;
         }
       }
 
-      return new Response("[]", {
-        status: 200,
-        headers: new Headers({
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "*",
-          "Cache-Control": "no-store",
-          "Content-Type": "application/json; charset=utf-8"
-        })
-      });
+      const subdlPayload = await fetchSubdlCandidates(requestUrl.searchParams, request).catch(() => []);
+      return createJsonArrayResponse(subdlPayload);
     } catch (error) {
       return jsonResponse({ error: error.message }, 500);
     }
