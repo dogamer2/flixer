@@ -156,7 +156,7 @@ async function fetchMediaAttempt(upstreamUrl, headers) {
 
 async function fetchMedia(upstreamUrl, req) {
   const isWorkersDev = upstreamUrl.hostname.endsWith(".workers.dev");
-  const attempts = isWorkersDev ? ["vidsrc", true, false] : [true];
+  const attempts = isWorkersDev ? ["vidsrc", false, true] : [true];
   let lastResponse = null;
   let lastError = null;
 
@@ -167,6 +167,9 @@ async function fetchMedia(upstreamUrl, req) {
           ? buildVidsrcMediaRequestHeaders(req)
           : buildMediaRequestHeaders(req, includeSiteHeaders);
       const response = await fetchMediaAttempt(upstreamUrl, headers);
+      if (response.statusCode === 429) {
+        return response;
+      }
       if (response.statusCode < 400) {
         return response;
       }
@@ -714,6 +717,12 @@ app.all(/.*/, async (req, res) => {
     res.setHeader("x-media-missing", "true");
     res.setHeader("Cache-Control", "no-store");
     return res.status(404).send(response.body);
+  }
+
+  if (response.statusCode === 429) {
+    res.setHeader("x-media-rate-limited", "true");
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(429).send(response.body);
   }
 } else {
   console.log(`✅ [MEDIA ${response.statusCode}]`);

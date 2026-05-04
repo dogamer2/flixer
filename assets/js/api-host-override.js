@@ -19,7 +19,7 @@
   const PROXY_URL = IS_PRODUCTION_HOST ? window.location.origin : DEV_PROXY_URL;
   const SHOULD_FORWARD_HEADERS = !IS_PRODUCTION_HOST;
   const MEDIA_PROXY_PATH = "/__media_proxy__";
-  const HARDCODED_MEDIA_PROXY_ORIGIN = "https://flixer-jw67.onrender.com";
+  const HARDCODED_MEDIA_PROXY_ORIGIN = "";
   const MEDIA_PROXY_OVERRIDE_STORAGE_KEY = "flixer_media_proxy_origin";
   const ACCESS_GATE_STYLE_ID = "flixer-access-gate-style";
   const ACCESS_GATE_ROOT_ID = "flixer-access-gate-overlay";
@@ -56,12 +56,6 @@
 
   function getConfiguredMediaProxyOrigin() {
     try {
-      if (HARDCODED_MEDIA_PROXY_ORIGIN) {
-        return new URL(HARDCODED_MEDIA_PROXY_ORIGIN, window.location.origin).origin;
-      }
-    } catch (_error) {}
-
-    try {
       const runtimeOverride =
         typeof window.FLIXER_MEDIA_PROXY_ORIGIN === "string" ? window.FLIXER_MEDIA_PROXY_ORIGIN.trim() : "";
       if (runtimeOverride) {
@@ -86,7 +80,32 @@
       }
     } catch (_error) {}
 
+    try {
+      if (HARDCODED_MEDIA_PROXY_ORIGIN) {
+        return new URL(HARDCODED_MEDIA_PROXY_ORIGIN, window.location.origin).origin;
+      }
+    } catch (_error) {}
+
     return "";
+  }
+
+  function isDisabledSubtitleSearchUrl(url) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      return parsed.hostname === "sub.wyzie.io" && parsed.pathname === "/search";
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function createEmptySubtitleSearchResponse() {
+    return new Response("[]", {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store"
+      }
+    });
   }
 
   function isBackupDomainsPage() {
@@ -822,6 +841,11 @@
   // Intercept Fetch
   window.fetch = function (input, init = {}) {
     let url = (typeof input === "string") ? input : input.url;
+
+    if (isDisabledSubtitleSearchUrl(url)) {
+      return Promise.resolve(createEmptySubtitleSearchResponse());
+    }
+
     let newUrl = rewriteUrl(url);
 
     if (newUrl !== url) {

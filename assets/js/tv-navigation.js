@@ -404,6 +404,29 @@
     return null;
   }
 
+  function normalizedLabel(el) {
+    if (!el) return "";
+    return String(el.getAttribute("aria-label") || el.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+  }
+
+  function getHeroDetailsButton(playButton) {
+    if (!playButton || playButton.tagName !== "BUTTON") return null;
+    if (!/\bplay\b/.test(normalizedLabel(playButton))) return null;
+
+    var parent = playButton.parentElement;
+    if (!parent) return null;
+
+    var buttons = Array.from(parent.querySelectorAll("button")).filter(isVisible);
+    for (var i = 0; i < buttons.length; i += 1) {
+      if (buttons[i] === playButton) continue;
+      if (/\bdetails\b/.test(normalizedLabel(buttons[i]))) {
+        return buttons[i];
+      }
+    }
+
+    return null;
+  }
+
   function getReactProps(node) {
     if (!node) return null;
     var keys = Object.keys(node);
@@ -438,14 +461,22 @@
     target.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true, cancelable: true, view: window }));
     target.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, cancelable: true, view: window }));
 
-    window.setTimeout(function () {
+    var attempts = 0;
+    var openTimer = window.setInterval(function () {
+      attempts += 1;
       var button = visibleMoreInfoButton();
       if (button) {
+        window.clearInterval(openTimer);
         button.click();
-      } else if (typeof target.click === "function") {
-        target.click();
+        return;
       }
-    }, 560);
+      if (attempts >= 6) {
+        window.clearInterval(openTimer);
+        if (typeof target.click === "function") {
+          target.click();
+        }
+      }
+    }, 90);
 
     return true;
   }
@@ -537,6 +568,18 @@
     scheduleFocusRecovery(80);
   }, true);
 
+  document.addEventListener("click", function (event) {
+    var target = event.target && event.target.closest("button");
+    if (!target) return;
+
+    var heroDetailsButton = getHeroDetailsButton(target);
+    if (!heroDetailsButton) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    heroDetailsButton.click();
+  }, true);
+
     document.addEventListener("keydown", function (event) {
     var active = document.activeElement;
     var key = event.key;
@@ -564,6 +607,11 @@
 
     if (isSelectKey(event) && active && active.dataset.tvFocusable === "1") {
       event.preventDefault();
+      var heroDetailsButton = getHeroDetailsButton(active);
+      if (heroDetailsButton) {
+        heroDetailsButton.click();
+        return;
+      }
       if (!openFocusedCardDetails(active) && typeof active.click === "function") {
         active.click();
       }

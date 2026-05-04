@@ -282,27 +282,6 @@ async function fetchMedia(upstreamUrl, request) {
                 includeSiteHeaders: true,
                 origin: null,
                 referer: upstreamUrl.toString()
-              },
-              {
-                accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                includeSiteHeaders: true,
-                origin: embeddedOrigin,
-                referer: `${embeddedOrigin}/`,
-                secFetchDest: "document",
-                secFetchMode: "navigate",
-                secFetchSite: "none",
-                upgradeInsecureRequests: 1
-              },
-              {
-                accept: "*/*",
-                includeSiteHeaders: true,
-                origin: null,
-                referer: `${embeddedOrigin}/`,
-                secFetchDest: "empty",
-                secFetchMode: "no-cors",
-                secFetchSite: "same-site",
-                includeClientHints: false,
-                includeFetchMetadata: false
               }
             ]
           : []),
@@ -331,6 +310,9 @@ async function fetchMedia(upstreamUrl, request) {
         ? buildVidsrcMediaRequestHeaders(request)
         : buildMediaRequestHeaders(request, attempt);
       const response = await fetchMediaAttempt(upstreamUrl, headers);
+      if (response.status === 429) {
+        return response;
+      }
       if (response.status < 400) {
         return response;
       }
