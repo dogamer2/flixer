@@ -6,15 +6,7 @@
   <title>Redirecting...</title>
   <script>
     (function () {
-      var url = new URL(window.location.href);
-      var target = "/?__spa_path=" + encodeURIComponent(url.pathname);
-      if (url.search) {
-        target += "&" + url.search.slice(1);
-      }
-      if (url.hash) {
-        target += url.hash;
-      }
-      window.location.replace(target);
+      window.location.replace("/");
     }());
   </script>
 </head>

@@ -12,28 +12,6 @@
     <meta name="build-hash" content="__BUILD_HASH__" />
     <script>
         try {
-            const url = new URL(window.location.href);
-            const redirectedPath = url.searchParams.get("__spa_path");
-            if (redirectedPath) {
-                if (
-                    redirectedPath === "/sports" ||
-                    redirectedPath === "/sports/" ||
-                    redirectedPath === "/sports/index.html" ||
-                    redirectedPath.startsWith("/sports/")
-                ) {
-                    window.location.replace("/sports/");
-                }
-                url.searchParams.delete("__spa_path");
-                const restoredUrl = redirectedPath + (url.searchParams.toString() ? `?${url.searchParams.toString()}` : "") + url.hash;
-                window.history.replaceState(null, "", restoredUrl);
-            }
-        } catch (error) {
-            console.error("Failed to restore SPA route:", error);
-        }
-    </script>
-
-    <script>
-        try {
             localStorage.setItem("ads_enabled", "false");
             localStorage.setItem("preferred_language", "en");
             document.cookie = "language=en; path=/; max-age=31536000";
