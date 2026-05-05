@@ -1,68 +1,27 @@
 export async function onRequestGet(context) {
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Flixer Sports</title>
-  <style>
-    :root {
-      color-scheme: dark;
+  const requestUrl = new URL(context.request.url);
+  const targetUrl = new URL("/sports/index.html", requestUrl.origin);
+  const response = await fetch(targetUrl.toString(), {
+    headers: {
+      accept: "text/html,application/xhtml+xml"
     }
-    * {
-      box-sizing: border-box;
-    }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: #050505;
-      color: #f4f4f5;
-      font-family: Inter, system-ui, sans-serif;
-    }
-    .topbar {
-      height: 64px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 16px;
-      border-bottom: 1px solid rgba(255,255,255,0.12);
-      background: rgba(10,10,10,0.96);
-    }
-    .title {
-      font-size: 15px;
-      font-weight: 600;
-    }
-    .back {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 10px 14px;
-      border-radius: 999px;
-      color: #fff;
-      text-decoration: none;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.04);
-    }
-    iframe {
-      display: block;
-      width: 100%;
-      height: calc(100vh - 64px);
-      border: 0;
-      background: #000;
-    }
-  </style>
-</head>
-<body>
-  <div class="topbar">
-    <div class="title">Live Sports</div>
-    <a class="back" href="/">Back To Flixer</a>
-  </div>
-  <iframe src="/mut.st/index.html" referrerpolicy="no-referrer"></iframe>
-</body>
-</html>`;
+  });
+
+  let html = await response.text();
+  html = html.replace(
+    /<head>/i,
+    `<head>\n  <base href="/sports/">\n  <style>.flixer-back-link{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:999px;color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);font-family:Inter,system-ui,sans-serif}.flixer-back-wrap{max-width:1280px;margin:12px auto 0;padding:0 16px}</style>`
+  );
+
+  if (!html.includes("Back To Flixer")) {
+    html = html.replace(
+      /<\/header>/i,
+      `</header>\n<div class="flixer-back-wrap"><a class="flixer-back-link" href="/">Back To Flixer</a></div>`
+    );
+  }
 
   return new Response(html, {
-    status: 200,
+    status: response.status,
     headers: {
       "Cache-Control": "no-store",
       "Content-Type": "text/html; charset=utf-8"
