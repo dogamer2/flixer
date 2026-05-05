@@ -1,1 +1,3 @@
+ /sports /sports/index.html 200
+ /sports/* /sports/:splat 200
 /* /index.html 200
